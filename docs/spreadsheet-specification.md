@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-A spreadsheet model that projects outcomes when a Bitcoin holder uses their BTC as collateral to borrow and acquire *more* Bitcoin. The bet is simple: if Bitcoin's long-term price appreciation exceeds the cost of borrowing, the leveraged position generates excess return. That excess can be withdrawn as retirement income or reinvested to accumulate more BTC than simply holding.
+A spreadsheet model that projects outcomes when a Bitcoin holder uses their BTC as collateral to borrow and acquire *more* Bitcoin. The bet is simple: if Bitcoin's long-term price appreciation exceeds the cost of borrowing, the leveraged position builds equity faster than simply holding. That equity can be withdrawn as retirement income or kept in the position to accumulate more BTC via rebalancing.
 
 This is **not** a lending-yield model. The user is the borrower, not the lender. There is no "lending APY" to earn — the profit comes from the spread between BTC's CAGR and the borrowing rate, applied to a larger BTC position than the user could otherwise hold.
 
@@ -190,7 +190,7 @@ Key observations:
 |-----|------|---------|
 | 1 | **Inputs** | All user-configurable parameters |
 | 2 | **Price Projection** | Three BTC price scenarios (20 years) |
-| 3 | **Leveraged Position** | Year-by-year: position value, debt, LTV, excess return, liquidation risk |
+| 3 | **Leveraged Position** | Year-by-year: position value, debt lifecycle, equity gain, LTV, liquidation risk |
 | 4 | **Income / Accumulation** | Year-by-year: income withdrawn (income mode) or BTC accumulated (accumulation mode) |
 | 5 | **Summary** | Key metrics across all scenarios, both modes |
 
@@ -249,8 +249,8 @@ Example (Standard, 35% LTV): Margin call at $75,000 × (0.35 / 0.70) = $37,500 �
 | Input | Description | Default | Unit |
 |-------|-------------|---------|------|
 | Mode | Accumulation (reinvest all) or Income (withdraw some) | Accumulation | toggle |
-| Withdrawal rule | "Fixed $" (withdraw fixed USD/year) or "% of excess return" | % of excess return | toggle |
-| Withdrawal amount | Fixed dollar amount (if fixed $) or % of excess return (if %) | 50% | USD or % |
+| Withdrawal rule | "Fixed $" (withdraw fixed USD/year) or "% of equity gain" | % of equity gain | toggle |
+| Withdrawal amount | Fixed dollar amount (if fixed $) or % of equity gain (if %) | 50% | USD or % |
 
 ### 4.4 Rebalancing Behavior
 
@@ -637,7 +637,7 @@ One table covering all three price scenarios and both modes.
 | Risk | How Modeled |
 |------|-------------|
 | BTC price decline → liquidation | Effective LTV tracks against liquidation threshold every year. Price scenario with cyclical drawdowns tests worst-case. |
-| Borrow rate exceeding BTC appreciation | Excess return goes negative in those years. In accumulation mode, this erodes prior gains. In income mode, income stops. |
+| Borrow rate exceeding BTC appreciation | Equity gain goes negative in those years. In accumulation mode, this erodes prior paper gains. In income mode, income stops ($0 for the year). |
 | Compounding debt in multi-year bear | Interest accrues even when BTC is down. The model tracks cumulative interest and shows debt growth during drawdown periods. |
 | Over-withdrawal in income mode | If withdrawal exceeds sustainable rate, the model flags it and shows position depletion. |
 
