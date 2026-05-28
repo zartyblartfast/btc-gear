@@ -13,6 +13,8 @@ Bitcoin leveraged accumulation and retirement income projector. Borrow against B
 
 ## Architecture
 
+> **Note:** The source tree shown below is planned. Implementation has not started yet.
+
 ```
 btc-gear/
 ├── docs/                  # Specifications and documentation

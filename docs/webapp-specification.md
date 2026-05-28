@@ -173,53 +173,63 @@ interface PositionRow {
   // Collateral (original BTC only; purchased BTC is NOT collateral)
   collateralBtc: number;
   collateralValue: number;       // collateralBtc × btcPrice
-  // Debt
   targetLtv: number;
-  outstandingDebt: number;       // Start of year (before interest + rebalancing)
-  newBorrowing: number;          // Additional borrowed this year (rebalancing)
-  btcBoughtFromRebalancing: number;  // newBorrowing ÷ btcPrice
-  // Position
-  totalLeveragedBtc: number;     // collateralBtc + cumulative purchased BTC
-  grossPositionValue: number;    // totalLeveragedBtc × btcPrice
-  netEquityUsd: number;         // grossPositionValue − outstandingDebt
-  netEquityBtc: number;         // netEquityUsd ÷ btcPrice (after debt)
+  // Debt lifecycle (in canonical cycle order — see spreadsheet spec §6.1)
+  debtStart: number;             // Carried forward from prior year's debtEnd
+  preInterestLtv: number;        // debtStart / collateralValue
+  annualInterest: number;        // debtStart × borrowApr ($0 in year 0)
+  debtAfterInterest: number;     // debtStart + annualInterest
+  rebalanceBorrowingUsd: number; // MAX(0, target_debt − debtAfterInterest). Always ≥ 0.
+  rebalanceRepaymentUsd: number; // MAX(0, debtAfterInterest − target_debt). Always ≥ 0.
+  debtEnd: number;              // debtAfterInterest + rebalanceBorrowingUsd − rebalanceRepaymentUsd
+  // BTC position
+  btcBoughtFromRebalancing: number; // rebalanceBorrowingUsd / btcPrice. Always ≥ 0.
+  btcSoldForRepayment: number;     // rebalanceRepaymentUsd / btcPrice. Always ≥ 0.
+  totalLeveragedBtc: number;       // Prior total + btcBoughtFromRebalancing − btcSoldForRepayment
+  grossPositionValue: number;      // totalLeveragedBtc × btcPrice
+  netEquityUsd: number;           // grossPositionValue − debtEnd
+  netEquityBtc: number;           // netEquityUsd / btcPrice
   // Costs
-  annualInterest: number;       // outstandingDebt(start) × borrowApr
-  annualFee: number;            // collateralValue × annualPlatformFee (+ origination in year 0)
-  totalAnnualCost: number;      // interest + fee
-  // Year-over-year changes
-  priceChange: number;           // btcPrice(t) − btcPrice(t−1)
-  equityGainUsd: number;        // Mark-to-market: netEquityUsd(t) − netEquityUsd(t−1)
-                                 // NOT a cashflow. Changes paper wealth, not BTC quantity.
-  // Risk
-  effectiveLtv: number;          // outstandingDebt(after rebalance) ÷ collateralValue
+  annualFee: number;              // collateralValue × annualPlatformFee
+  totalAnnualCost: number;        // annualInterest + annualFee (+ origination in year 0)
+  // Diagnostics
+  priceChange: number;             // btcPrice(t) − btcPrice(t−1)
+  markToMarketReturnUsd: number;   // totalLeveragedBtc(start) × priceChange − totalAnnualCost
+                                   // Diagnostic only — NOT used for income/accumulation decisions.
+  // Risk (end-of-year)
+  effectiveLtvEnd: number;        // debtEnd / collateralValue
   marginCallThreshold: number;
   liquidationThreshold: number;
-  safetyBuffer: number;          // liquidationThreshold − effectiveLtv (pp)
+  safetyBuffer: number;           // liquidationThreshold − effectiveLtvEnd (percentage points)
   riskStatus: 'SAFE' | 'WARNING' | 'MARGIN CALL' | 'LIQUIDATED';
-  renewalRisk: boolean;         // true if LTV exceeds margin call threshold at year end
-  suggestedLtv: number;         // Model's recommended LTV for next year
+  renewalRisk: boolean;          // true if effectiveLtvEnd ≥ marginCallThreshold
+  suggestedLtv: number;          // Model's recommendation for next year
 }
 
 // ── Income / Accumulation ──
 
 interface IncomeRow {
   year: number;
-  // Wealth tracking
-  equityGainUsd: number;        // From PositionRow — mark-to-market gain this year
+  // Wealth
+  equityGainUsd: number;           // netEquityUsd(t) − netEquityUsd(t−1). Mark-to-market.
   // Income mode only
-  incomeWithdrawn: number;      // $0 if Accumulation mode or equityGainUsd < 0
-  btcSoldForIncome: number;     // incomeWithdrawn ÷ btcPrice
-  cumulativeIncome: number;     // Running total
-  sustainable: boolean;         // true if incomeWithdrawn ≤ equityGainUsd and equityGainUsd > 0
+  incomeWithdrawn: number;        // $0 if Accumulation mode or equityGainUsd < 0
+  btcSoldForIncome: number;       // incomeWithdrawn / btcPrice
+  incomeCapped: boolean;          // true if income was reduced due to insufficient purchased BTC
+  cumulativeIncome: number;       // Running total
+  cumulativeBtcSoldForIncome: number; // Running total of BTC sold for income
+  sustainable: boolean;           // true if incomeWithdrawn ≤ equityGainUsd and incomeWithdrawn > 0
+  // BTC tracking (see §2.4 income sale rules)
+  purchasedBtcAvailable: number;   // Cumulative BTC bought (borrowing + rebalancing) − cumulative BTC sold (income + repayment)
+  originalCollateralBtc: number;   // Starting BTC — never sold by income mode (only by liquidation/repayment)
   // Accumulation mode only
-  btcFromRebalancing: number;   // BTC bought with new borrowing this year
-  totalLeveragedBtc: number;    // End-of-year after rebalancing
-  // Both modes
-  netBtcAfterWithdrawals: number; // After selling for income (if Income) or after rebalancing (if Accum)
-  btcAccumulationMultiple: number; // netBtc / startingBtc
-  passiveHoldBtc: number;       // Constant = config.btcHoldings
-  cumulativeBtcOutperformance: number; // netBtc − passiveHoldBtc
+  btcFromRebalancing: number;     // BTC bought with new borrowing this year
+  // Both modes (end-of-year)
+  grossBtcEnd: number;            // Actual BTC held before debt payoff: totalLeveragedBtc − btcSoldForIncome
+  netBtcAfterDebt: number;        // grossBtcEnd − debtEnd / btcPrice — what the user actually owns
+  btcAccumulationMultiple: number; // netBtcAfterDebt / startingBtc
+  passiveHoldBtc: number;         // Constant = config.btcHoldings
+  cumulativeBtcOutperformance: number; // netBtcAfterDebt − passiveHoldBtc
 }
 
 // ── Summary (one selected scenario + mode at a time) ──
@@ -446,7 +456,7 @@ If real values are enabled, a second row of inflation-adjusted equivalents appea
   "liquidationLtv": 0.80,
   "safetyMargin": 0.10,
   "mode": "Accumulation",
-  "withdrawalRule": "% of excess",
+  "withdrawalRule": "% of equity gain",
   "withdrawalAmount": 0.50,
   "rebalanceRule": "Maintain LTV",
   "anchorPessimistic": 100000,
@@ -506,7 +516,7 @@ All defaults match the Ledn platform as of May 2026:
 | liquidationLtv | 80% |
 | safetyMargin | 10 pp |
 | mode | Accumulation |
-| withdrawalRule | % of excess |
+| withdrawalRule | % of equity gain |
 | withdrawalAmount | 50% |
 | rebalanceRule | Maintain LTV |
 | anchorPessimistic | $100,000 |
