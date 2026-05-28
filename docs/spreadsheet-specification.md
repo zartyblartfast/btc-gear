@@ -11,81 +11,162 @@ This is **not** a lending-yield model. The user is the borrower, not the lender.
 ### 2.1 Mechanics
 
 ```
-Year 0:
+Year 0 (setup):
   1. User deposits N BTC as collateral on a borrowing platform
   2. User borrows stablecoins worth N × BTC_price × LTV%
   3. User swaps borrowed stablecoins for BTC
-  4. User now holds N + borrowed_BTC (total), with debt = borrowed_stablecoins
+  4. User now holds N (collateral) + borrowed_BTC (purchased), with debt = borrowed_stablecoins
+     IMPORTANT: Only the original N BTC serves as collateral. Purchased BTC is held separately
+     and does NOT increase the collateral pool. LTV = debt / (N × price).
 
-Each subsequent year:
-  1. BTC price changes — collateral value and position value change
-  2. Borrow interest accrues on the outstanding debt
-  3. Effective LTV = debt ÷ collateral_value (changes with price)
-  4. Decision: withdraw excess return as income, repay some debt, borrow more, or let it ride
+Each subsequent year (deterministic cycle, in this order):
+  1. BTC price updates from the price projection tab
+  2. Collateral value recalculated: N × new_price
+  3. Pre-interest LTV computed: debt / collateral_value
+  4. Liquidation check: if LTV >= liquidation_threshold, position is liquidated (collateral seized)
+  5. Margin call check: if LTV >= margin_call_threshold, position flagged (must top up to renew)
+  6. Interest accrues: interest = debt × APR  (simple interest, added to debt)
+  7. Rebalancing: per the rebalance rule, borrow more or repay debt
+  8. Mode action (accumulation or income — see §2.4)
+  9. End-of-year state: ending BTC, debt, equity, LTV
 ```
 
-### 2.2 Where the Return Comes From
+### 2.2 Where the Return Comes From — Two Separate Concepts
+
+The strategy generates value through two DISTINCT mechanisms. They are often conflated but must
+be kept separate.
+
+**Concept A: Equity Gain (USD)**
+
+The user's net worth increases when BTC appreciates faster than borrowing costs erode it.
+This is mark-to-market — it changes USD equity but does NOT create new BTC.
+
+| Component | Formula | Nature |
+|-----------|---------|--------|
+| Starting net worth (USD) | N × initial_price | |
+| Gross position value | total_BTC_held × current_price | Mark-to-market |
+| Outstanding debt | accumulated borrowings + accrued interest | Fixed in USD |
+| **Net equity (USD)** | Gross position value − debt | Mark-to-market |
+| Annual interest cost | debt × APR | Cash cost, added to debt |
+| **Equity gain (USD)** | net_equity(t) − net_equity(t−1) | Change in mark-to-market wealth |
+
+Equity gain can be positive (BTC rose faster than interest costs) or negative (BTC fell or
+interest outpaced appreciation). It is NOT a cashflow — you cannot spend it directly, and
+you cannot use it to buy more BTC without borrowing or selling.
+
+**Concept B: BTC Accumulated (BTC)**
+
+The user acquires additional BTC by borrowing more against appreciated collateral. This is
+the ONLY way BTC quantity increases in the model (aside from the initial purchase at year 0).
 
 | Component | Formula |
 |-----------|---------|
-| Starting net worth (BTC) | N (the user's original holdings) |
-| Total BTC held (leveraged) | N + borrowed_BTC |
-| Annual BTC appreciation | total_BTC × price_gain% |
-| Annual borrowing cost | debt × borrow_APR |
-| **Excess return** | appreciation − borrowing_cost |
-| **Income withdrawn** | Portion of excess return sold for USD (if in income mode) |
-| **BTC accumulated** | Excess return kept as additional BTC (if in accumulation mode) |
+| Initial borrowed BTC | (N × initial_price × LTV) / initial_price | One-time at setup |
+| Additional BTC from rebalancing | new_borrowing / current_price | Each year, if collateral rose |
+| **Total BTC accumulated** | initial_borrowed_BTC + sum of rebalancing_BTC | Cumulative |
+
+When BTC rises and LTV improves, the rebalancing rule may borrow additional stablecoins to
+restore the target LTV. Those stablecoins buy more BTC. In accumulation mode, this is the
+compound-growth engine — more BTC → more appreciation → lower LTV → borrow more → more BTC.
+
+**The key insight:** BTC quantity grows from REBALANCING, not from appreciation. Appreciation
+creates the *capacity* to borrow more (by lowering LTV), but the actual BTC acquisition
+requires taking on additional debt.
 
 ### 2.3 Why Borrow Stablecoins (Not BTC)
 
-The model assumes borrowing **stablecoins** (USDC, USDT) and swapping for BTC, rather than borrowing BTC directly. Reason: the debt is fixed in USD terms while the collateral is in BTC. When BTC price rises, the collateral grows but the debt stays the same — LTV improves naturally and the user gains equity. When BTC price falls, LTV worsens and liquidation risk increases.
+The model assumes borrowing **stablecoins** (USDC, USDT) and swapping for BTC. Reason: the debt
+is fixed in USD terms while the collateral is in BTC. When BTC price rises, the collateral
+grows but the debt stays the same — LTV improves naturally and the user gains equity AND
+borrowing capacity. When BTC price falls, LTV worsens and liquidation risk increases.
 
-If the user borrowed BTC directly, both collateral and debt would rise together in USD terms — no natural deleveraging from price appreciation, and liquidation risk is more sensitive. Stablecoin borrowing is also far more common across platforms (Aave, Compound, Morpho, centralized lenders).
+If the user borrowed BTC directly, both collateral and debt would rise together in USD terms —
+no natural deleveraging from price appreciation, and the debt itself appreciates, erasing
+the benefit of leverage. Stablecoin borrowing is also the standard product across platforms
+(Aave, Compound, Morpho, centralized lenders including Ledn).
 
-The model includes an optional toggle for BTC-denominated borrowing as an alternative, with appropriate adjustments.
+BTC-denominated borrowing is out of scope for v1.
 
 #### Inflation Tailwind
 
-Borrowing stablecoins carries an additional, often overlooked advantage: **fiat inflation erodes the real value of the debt over time.** A $52,500 loan today is worth about $29,000 in purchasing power after 20 years at 3% annual inflation — even before making a single payment. Meanwhile, BTC is a hard asset whose price should, over long timeframes, reflect monetary debasement.
-
-This means the *real* (inflation-adjusted) borrowing cost is lower than the nominal rate:
+Borrowing stablecoins carries an additional advantage: **fiat inflation erodes the real value
+of the debt over time.** A $52,500 loan today is worth about $29,000 in purchasing power after
+20 years at 3% annual inflation — even before making a single payment. Meanwhile, BTC is a
+hard asset whose price should, over long timeframes, reflect monetary debasement.
 
 ```
 Real borrow cost ≈ Nominal APR − Inflation rate
 ```
 
-At 11.49% nominal APR with 3% inflation, the real cost is roughly 8.5%. The spread between BTC's real appreciation and this real borrowing cost is the true economic return.
+At 11.49% nominal APR with 3% inflation, the real cost is roughly 8.5%. The spread between
+BTC's real appreciation and this real borrowing cost is the true economic return.
 
-The model optionally displays real (inflation-adjusted) values alongside nominal figures. When enabled, all USD amounts are discounted by the user's inflation assumption so they reflect constant purchasing power. This is especially important over a 20-year horizon where inflation compounding is significant.
+The model optionally displays real (inflation-adjusted) values alongside nominal figures.
+When enabled, all USD-denominated values are discounted by the user's inflation assumption
+so they reflect constant purchasing power. BTC values are NOT inflation-adjusted — BTC is
+a hard asset, not a fiat purchasing-power claim.
 
 ### 2.4 Two Modes
 
 The user chooses one mode in the Inputs tab:
 
-**Accumulation Mode:** All excess return is reinvested. Each year, as BTC rises and LTV improves, the user can borrow more to buy additional BTC (maintaining target LTV). Net BTC holdings grow faster than simply holding. No USD income is taken.
+**Accumulation Mode:** The user never takes income. Each year, when BTC rises and LTV improves,
+the rebalancing rule borrows more stablecoins (up to the target LTV) and uses them to buy
+additional BTC. This compounds the leveraged position: more BTC → more appreciation → lower
+LTV → borrow more → more BTC. Over time, total BTC held grows beyond what a passive holder
+would own. No USD is ever withdrawn.
 
-**Income Mode:** A portion of the excess return is sold for USD and withdrawn each year. The user specifies either a fixed dollar amount or a percentage of excess return to withdraw. The remaining excess stays in the position.
+**Income Mode:** Each year, after interest accrues and rebalancing, the user withdraws a
+portion of the leveraged position's gains. Mechanically, this means selling some BTC for
+stablecoins and withdrawing those stablecoins. The user specifies either a fixed dollar
+amount or a percentage of that year's equity gain. The remaining value stays in the
+position. If equity gain is negative (BTC fell), income is $0 for that year — the user
+cannot withdraw from a shrinking position without selling collateral, which the model
+flags but does not force.
 
-### 2.5 Simple Numerical Example (using Ledn-like parameters)
+In both modes, the underlying mechanism is the same: borrow against BTC, buy more BTC, let
+appreciation do the work. The mode only determines what happens to the gains at year-end.
 
-| | Year 0 | Year 1 (+40% BTC) |
+### 2.5 Numerical Example (Standard Profile, 35% LTV)
+
+| | Year 0 (setup) | Year 1 (BTC +40%) |
 |---|---|---|
 | BTC price | $75,000 | $105,000 |
-| Collateral (BTC) | 2.0 | 2.0 |
+| Collateral BTC (only original) | 2.0 | 2.0 |
 | Collateral value | $150,000 | $210,000 |
-| LTV target | 50% | 50% (rebalanced) |
-| Borrowed (USD) | $75,000 | $105,000 (borrow more as collateral rose) |
-| BTC bought with borrowed | 1.0 BTC | 1.0 BTC (new borrowing buys more) |
-| Total BTC held | 3.0 | 3.0 + new_borrowed_BTC |
-| Borrow interest (11.49%) | — | $75,000 × 11.49% = $8,618 |
-| Appreciation on original 2 BTC | — | 2.0 × $30,000 = $60,000 |
-| Appreciation on borrowed 1.0 BTC | — | 1.0 × $30,000 = $30,000 |
-| Total appreciation | — | $90,000 |
-| Excess return | — | $90,000 − $8,618 = $81,382 |
-| **In accumulation mode:** | — | $81,382 buys +0.78 BTC at $105K. Now hold ~3.78 BTC total |
-| **In income mode (withdraw 30%):** | — | Withdraw $24,415. Reinvest $56,967 (+0.54 BTC). Now hold ~3.54 BTC |
+| LTV target | 35% | 35% |
+| **Borrowing** | | |
+| Initial debt (year 0) | $52,500 | — |
+| Interest accrued (11.49%) | — | $52,500 × 11.49% = $6,032 |
+| Debt after interest | — | $58,532 |
+| Pre-rebalance LTV | — | $58,532 / $210,000 = 27.9% |
+| New borrowing to restore 35% LTV | — | $210,000 × 0.35 − $58,532 = $14,968 |
+| Year-end debt | $52,500 | $73,500 |
+| **BTC position** | | |
+| BTC bought at setup | 0.70 | — |
+| BTC bought from rebalancing | — | $14,968 / $105,000 = 0.143 |
+| Total leveraged BTC | 2.70 | 2.843 |
+| **Wealth** | | |
+| Gross position value | $202,500 | $298,515 |
+| Net equity (USD) | $150,000 | $225,015 |
+| Equity gain (USD) | — | $75,015 |
+| **Passive hold comparison** | | |
+| Passive hold BTC | 2.00 | 2.00 |
+| Passive hold value | $150,000 | $210,000 |
+| Passive gain | — | $60,000 |
+| **Leverage benefit** | | $75,015 − $60,000 = $15,015 |
 
-Without leverage, the user would hold 2.0 BTC worth $210,000 (gain of $60,000). With leverage at 50% LTV, net worth after repaying debt is $210,000 + $105,000 (from borrowed BTC) − $75,000 (debt) = $240,000 in equity. The leverage amplified the return from $60K to ~$81K excess.
+Key observations:
+- BTC grew from 2.70 to 2.843 — the growth came from REBALANCING ($14,968 new borrowing →
+  0.143 BTC), not from appreciation
+- The $75,015 equity gain is mark-to-market wealth, not spendable cash. In accumulation mode
+  it stays in the position. In income mode, a portion can be withdrawn by selling BTC.
+- The leverage added $15,015 beyond passive holding — the spread between appreciation on
+  the borrowed 0.70 BTC ($21,000) and the interest cost ($6,032) minus the new interest
+  that will be owed on the additional borrowing
+- After rebalancing, LTV returns to exactly 35% ($73,500 / $210,000)
+- If BTC had fallen, LTV would have risen, and the rebalancing rule might require repaying
+  debt (selling BTC) to avoid approaching the margin call threshold
 
 ---
 
@@ -118,7 +199,7 @@ Without leverage, the user would hold 2.0 BTC worth $210,000 (gain of $60,000). 
 | Borrow APR | Annual interest rate on borrowed funds. Ledn tiered rates: 11.49% (loans <$250K), 10.49% ($250K+), 9.99% ($500K+), 9.75% ($1M+). Simple interest, not compounding. | 11.49% | % |
 | Origination fee | One-time fee on initial loan. Ledn charges none. | 0.0% | % |
 | Annual platform fee | Ongoing custody or management fee. Ledn charges none. | 0.0% | % |
-| Borrow currency | "Stablecoins/USD" (default, as Ledn issues) or "BTC" (BTC-denominated debt, not offered by Ledn) | Stablecoins/USD | toggle |
+| Borrow currency | "Stablecoins/USD" (fixed in v1 — BTC-denominated borrowing out of scope) | Stablecoins/USD | fixed |
 | Margin call LTV | LTV at which the platform requires additional collateral. Ledn margin calls at 70%. | 70% | % |
 | Liquidation LTV | LTV at which the platform liquidates the collateral. Ledn liquidates at 80%. | 80% | % |
 | Safety margin | Extra LTV buffer for early warning (warning at margin_call_LTV − margin) | 10 pp | percentage points |
@@ -213,24 +294,32 @@ The toggle lets the user switch between nominal-only (simpler, matches actual do
 
 ### 5.1 Method
 
-**Two-phase compound growth with a 4-year cyclical overlay.**
+**Two-phase compound growth with a normalized 4-year cyclical overlay.**
 
-Rather than fitting a logistic curve (which requires numerical solvers), the model uses a transparent two-phase approach:
+Phase 1 (Years 0–5): Compound at the rate needed to hit the user's 2030 anchor on the trend line.
 
-**Phase 1 (Years 0–5, 2025–2030):** Compound at the rate needed to hit the user's 2030 anchor exactly.
+Phase 2 (Years 5–20): Compound at a reduced rate (Phase 1 × decay factor), reflecting market maturation.
 
-**Phase 2 (Years 5–20, 2030–2045):** Compound at a reduced rate (Phase 1 rate × decay factor), reflecting market maturation and diminishing returns.
+A dampened cosine wave overlays the trend to model Bitcoin's ~4-year halving cycle. The
+wave is **normalized** so that year 0 always equals the current price — the cycle multiplier
+at t=0 is exactly 1.0. This preserves the cycle's shape (peaks and troughs in the right
+years) while anchoring the starting point.
 
-A dampened cosine wave overlays the trend to model Bitcoin's ~4-year halving cycle.
+**Important: Anchor vs displayed price.** The 2030 anchor applies to the **trend line**, not
+the final cycle-adjusted price. At year 5, the trend line exactly equals the anchor, but the
+displayed price will differ due to the cycle overlay. For example, a $500K median anchor
+produces Trend(5) = $500K, but Price(5) may be ~$357K if the cycle is in a neutral phase.
+The anchor represents the user's long-term conviction about where the trend sits; the cycle
+overlay adds realistic short-term variation around that trend.
 
 ### 5.2 Calculation Steps (per scenario)
 
-**Step 1 — Phase 1 CAGR:**
+**Step 1 — Phase 1 CAGR (calibrated to hit 2030 anchor on the trend line):**
 ```
 CAGR1 = (Anchor_2030 / Current_Price)^(1/5) − 1
 ```
 
-**Step 2 — Phase 2 CAGR:**
+**Step 2 — Phase 2 CAGR (post-2030, diminished returns):**
 ```
 CAGR2 = CAGR1 × Growth_Decay
 ```
@@ -240,26 +329,34 @@ CAGR2 = CAGR1 × Growth_Decay
 If t ≤ 5:  Trend(t) = Current_Price × (1 + CAGR1)^t
 If t > 5:  Trend(t) = Anchor_2030 × (1 + CAGR2)^(t−5)
 ```
+Trend(5) = Anchor_2030 exactly (by construction).
 
-**Step 4 — Cyclical overlay:**
+**Step 4 — Normalized cyclical overlay:**
 
-Bitcoin's 4-year halving cycle creates a rough pattern (last halving: April 2024):
-- Halving year +1 (2025, 2029, 2033, 2037, 2041): bull market peaks
-- Halving year +2 (2026, 2030, 2034, 2038, 2042): bear market troughs
-
-A cosine wave with 4-year period, zero phase shift, aligns: peak at t=0 (2025), trough at t=2 (2027), peak at t=4 (2029), etc.
+The raw cycle uses a cosine with 4-year period. Without normalization, t=0 produces
+multiplier = 1 + amplitude (e.g., 1.4), incorrectly inflating the starting price.
+We normalize by dividing through by the t=0 value:
 
 ```
 cycle_number = floor(t / 4)
 effective_amplitude = Base_Amplitude × (1 − Amplitude_Decay)^cycle_number
-Cycle_Multiplier(t) = 1 + effective_amplitude × cos(2π × t / 4)
+Raw_Multiplier(t) = 1 + effective_amplitude × cos(2π × t / 4)
+Cycle_Multiplier(t) = Raw_Multiplier(t) / (1 + effective_amplitude)
 ```
+
+At t=0: Raw_Multiplier = 1 + amp → Cycle_Multiplier = 1.0 (preserves current price).
+At t=2: cos(π) = −1 → Raw = 1 − amp → Cycle ≈ (1−amp)/(1+amp) (trough).
+At t=4: cos(2π) = 1 → Raw = 1 + amp → Cycle returns to 1.0.
+
+The cosine wave naturally produces peaks at t=0,4,8,... and troughs at t=2,6,10,...
+aligning with Bitcoin's historical rhythm where halving+1 years (2025, 2029) tend to be
+strong and halving+2 years (2027, 2031) tend to correct.
 
 **Step 5 — Final price:**
 ```
 Price(t) = Trend(t) × Cycle_Multiplier(t)
 ```
-Floor at $1.
+Floor at $1. If the cycle multiplier would push Price(t) below $1, clamp to $1.
 
 ### 5.3 Output Format
 
@@ -270,11 +367,26 @@ Floor at $1.
 
 ### 5.4 Example Calibration
 
-With defaults: Current $75,000, Median anchor $500,000, Growth decay 30%.
+With defaults: Current $75,000, Median anchor $500,000, Growth decay 30%, Amplitude 40%.
 
 - Phase 1 CAGR: (500K/75K)^0.2 − 1 ≈ 46.1%
 - Phase 2 CAGR: 46.1% × 30% ≈ 13.8%
 - 2045 trend: 500K × 1.138^15 ≈ $3.46M
+
+**Cycle-adjusted prices at key years (median scenario):**
+
+| Year | t | cos(2πt/4) | Raw Mult | Cycle Mult | Trend | Displayed Price |
+|------|---|------------|----------|------------|-------|-----------------|
+| 2025 | 0 | +1.00 | 1.40 | 1.00 | $75K | $75K |
+| 2026 | 1 | 0.00 | 1.00 | 0.714 | $110K | $78K |
+| 2027 | 2 | −1.00 | 0.60 | 0.429 | $160K | $69K |
+| 2028 | 3 | 0.00 | 1.00 | 0.714 | $234K | $167K |
+| 2029 | 4 | +1.00 | 1.40 | 1.00 | $342K | $342K |
+| 2030 | 5 | 0.00 | 1.00 | 0.714 | $500K | $357K |
+
+Note how Trend(5) = $500K exactly (hits the anchor) but Price(5) = $357K due to the cycle.
+The user's "BTC at $500K by 2030" conviction is encoded; the cycle overlay makes the path
+realistic rather than a smooth curve.
 
 ### 5.5 Anchor Default Sources
 
@@ -382,56 +494,52 @@ If effective LTV reaches or exceeds the liquidation threshold in any year:
 
 This is the most important output. It tells the user whether their chosen LTV survives the worst drawdown in each scenario.
 
-### 6.5 BTC-Denominated Borrowing (Alternative)
-
-If the user selects "BTC" as borrow currency:
-- Debt is denominated in BTC, not USD
-- Borrow interest is paid in BTC
-- LTV dynamics change: both collateral and debt move together with BTC price, so LTV is relatively stable
-- Excess return formula changes: the debt appreciates in USD terms along with the collateral, reducing net gain
-- The model adjusts all formulas accordingly and adds a warning that BTC-denominated borrowing typically carries higher APR and offers less natural deleveraging
-
 ---
 
 ## 7. Tab 4 — Income / Accumulation
 
-This tab uses the excess return figures from Tab 3 and applies the chosen mode.
+This tab uses the position data from Tab 3 and applies the chosen mode.
 
 ### 7.1 Accumulation Mode
 
-All excess return is kept in the position. Each year:
-- Excess return (BTC) is added to total leveraged BTC
-- This additional BTC generates further appreciation in future years
-- The position compounds: more BTC → more appreciation → more excess return → more BTC
+In accumulation mode, all value stays in the position. BTC quantity grows through rebalancing:
+each year, if BTC rose and LTV improved, the rebalance rule borrows more stablecoins (up to
+target LTV) and uses them to buy additional BTC. No USD is ever withdrawn. Equity gain is
+mark-to-market only — the user's net worth increases on paper but no cash is realized.
 
 | Column | Description |
 |--------|-------------|
 | Year | Calendar year |
-| Excess return (BTC) | From Tab 3 |
-| Cumulative BTC from excess return | Running total of excess return accumulated |
-| Total leveraged BTC (end of year) | Starting leveraged BTC + BTC bought via rebalancing + excess return reinvested |
-| Net BTC owned (after repaying all debt) | (Total leveraged BTC × BTC price − outstanding debt) ÷ BTC price |
-| BTC accumulation multiple | Net BTC owned ÷ starting BTC holdings (e.g., 1.5x means the user effectively has 1.5× their original BTC after repaying debt) |
-| Equivalent "passive hold" BTC | Starting BTC (what they'd have if they never leveraged — always = starting amount) |
-| Cumulative outperformance (BTC) | Net BTC owned − starting BTC |
+| Starting total BTC | Total leveraged BTC from prior year-end |
+| Rebalance borrowing | New stablecoins borrowed this year (from Tab 3) |
+| BTC bought from rebalancing | Rebalance borrowing ÷ current BTC price |
+| Total leveraged BTC (end of year) | Starting BTC + BTC bought from rebalancing |
+| Net BTC owned (after repaying all debt) | (Total BTC × price − debt) ÷ price |
+| BTC accumulation multiple | Net BTC owned ÷ starting BTC holdings |
+| Passive hold BTC | Starting BTC (constant) |
+| Cumulative BTC outperformance | Net BTC owned − starting BTC |
+| Equity gain (USD) | Net equity(t) − net equity(t−1) — mark-to-market |
 
 ### 7.2 Income Mode
 
-A portion of excess return is sold for USD and withdrawn. The remainder stays in the position.
+In income mode, after interest accrues and rebalancing, the user sells a portion of the
+position's BTC for stablecoins and withdraws them as income. The user specifies either a
+fixed dollar amount or a percentage of that year's equity gain. The remaining value stays
+in the position.
 
 | Column | Description |
 |--------|-------------|
 | Year | Calendar year |
-| Excess return (USD) | From Tab 3 |
-| Withdrawal rule applied | Fixed $X or Y% of excess |
-| Income withdrawn (USD) | Amount taken out this year |
+| Equity gain (USD) | From Tab 3 — mark-to-market wealth change |
+| Withdrawal rule applied | Fixed $X or Y% of equity gain |
+| Income withdrawn (USD) | Amount taken out this year. $0 if equity gain is negative. |
 | BTC sold for income | Income withdrawn ÷ BTC price |
-| Remaining excess (USD) | Excess return − income withdrawn |
-| Remaining excess reinvested (BTC) | Remaining excess ÷ BTC price |
+| Remaining equity (USD) | Equity gain − income withdrawn (retained in position) |
+| Total BTC after withdrawal | Position BTC − BTC sold for income |
 | Cumulative income withdrawn | Running total |
-| Net BTC owned (after withdrawals + debt) | Position BTC − BTC sold for income − (debt ÷ BTC price) |
+| Net BTC owned (after withdrawals + debt) | Total BTC − (debt ÷ BTC price) |
 | Annual income as % of starting capital | Income ÷ (starting_BTC × starting_price) |
-| Sustainable? | Flag: is the withdrawal rate below the position's net growth rate? If income > net position growth, the user is eating into capital. |
+| Sustainable? | Flag: if income > 0 and equity gain was positive → SUSTAINABLE. If income > equity gain → DRAINING CAPITAL. If equity gain negative → NO INCOME (BTC fell). |
 
 **Real-value columns (visible when "Show real values" is enabled in Tab 1):**
 
@@ -439,14 +547,19 @@ A portion of excess return is sold for USD and withdrawn. The remainder stays in
 |--------|-------------|
 | Real income withdrawn | Income withdrawn ÷ (1 + inflation)^t |
 | Cumulative real income | Running total of inflation-adjusted income |
-| Real net BTC owned | Net BTC owned with debt discounted by inflation (debt burden shrinks in real terms) |
+| Real debt burden | Outstanding debt ÷ (1 + inflation)^t — shows inflation erosion |
 | Real annual income as % of capital | Income in today's dollars ÷ starting capital in today's dollars |
 
 ### 7.3 Income Mode Constraints
 
-- If excess return is **negative** in a year (BTC fell and interest costs exceeded any gains), income withdrawal is $0. You cannot withdraw income from a losing position without selling collateral — the model flags this but does not force it.
-- If the user has set a fixed dollar withdrawal that exceeds excess return even in good years, the model shows a warning: "Withdrawal rate exceeds sustainable level — position will deplete over time."
-- A **minimum equity floor** can be set: if net BTC would fall below this level, income is reduced rather than dipping below the floor.
+- If equity gain is **negative** in a year (BTC fell and interest exceeded any appreciation),
+  income withdrawal is $0. The user cannot withdraw from a shrinking position without selling
+  collateral, which the model flags but does not force.
+- If the user has set a fixed dollar withdrawal that exceeds the typical equity gain in good
+  years, the model shows a warning: "Withdrawal rate exceeds sustainable level — position
+  will deplete over time."
+- The model does NOT include a minimum equity floor. The user can adjust their withdrawal
+  amount downward to preserve capital.
 
 ---
 
@@ -586,3 +699,96 @@ Users can adjust any of these defaults to reflect other platforms they use. The 
 - **Conditional formatting:** LTV risk column (Tab 3) uses green/amber/red. Income sustainability column (Tab 4) uses a warning highlight.
 - **Scenario selector:** Tab 3 and Tab 4 reference a single scenario at a time (dropdown in Tab 1). Tab 5 shows all scenarios simultaneously. Alternatively, Tab 3 and Tab 4 can duplicate columns for each scenario if screen real estate permits.
 - **Charts:** Price projection (3 lines), net BTC accumulation (2 lines per scenario: levered vs. passive), annual income (3 bars per scenario).
+
+---
+
+## 15. Validation Rules
+
+All inputs must pass validation before the model computes. The following rules apply:
+
+| Field | Rule |
+|-------|------|
+| BTC Holdings | > 0 |
+| Current BTC Price | > 0 |
+| LTV Target | 0 ≤ LTV ≤ 0.50 (Ledn max). Must be < margin_call_LTV < liquidation_LTV |
+| Borrow APR | ≥ 0 |
+| Origination Fee | 0 ≤ fee ≤ 0.05 |
+| Annual Platform Fee | 0 ≤ fee ≤ 0.05 |
+| Margin Call LTV | 0 < margin_call_LTV < liquidation_LTV ≤ 1.0 |
+| Liquidation LTV | margin_call_LTV < liquidation_LTV ≤ 1.0 |
+| Safety Margin | ≥ 0 and < (liquidation_LTV − LTV) |
+| Mode | Must be "Accumulation" or "Income" |
+| Withdrawal Rule | Must be "Fixed $" or "% of excess" (or "% of equity gain" in updated terminology) |
+| Withdrawal Amount | ≥ 0 |
+| Rebalance Rule | Must be "Maintain LTV", "Never Increase", or "Dynamic" |
+| Anchor prices (all 3) | > 0 |
+| Growth Decay | 0 ≤ decay ≤ 1.0 |
+| Cycle Amplitude | 0 ≤ amp < 1.0 so multiplier never reaches 0 |
+| Amplitude Decay | 0 ≤ decay ≤ 1.0 |
+| Start Year | Integer ≥ 2009 |
+| Projection Length | Integer 1–50 |
+| Inflation Rate | −0.10 ≤ rate ≤ 0.20 (allows deflation) |
+| Show Real Values | Must be "Yes" or "No" |
+
+Imported JSON must reject NaN, Infinity, null, strings in numeric fields, and missing required keys.
+
+## 16. Precision and Rounding Policy
+
+- **Internal calculations:** Full JavaScript/Excel floating-point precision. No intermediate rounding.
+- **Displayed USD values:** Nearest dollar (`$#,##0`)
+- **Displayed BTC values:** 8 decimal places (`0.00000000`)
+- **Displayed percentages:** 1 decimal place for LTV, APR, rates (`0.0%`). 2 decimal places for safety buffer.
+- **Displayed multiples:** 2 decimal places (`0.00x`)
+- **Test tolerances:** Golden tests use absolute tolerance of $1 for USD values and 0.000001 for BTC values. CAGR calibration tests use $1 tolerance on the 2030 anchor.
+
+## 17. Golden Test Fixtures
+
+Before engine development begins, the following minimum fixture set must exist. Each fixture
+is a JSON file containing `{ config: Config, expectedOutput: {...} }` validated against the
+reference spreadsheet.
+
+| Fixture | What it validates |
+|---------|-------------------|
+| `default-config.json` | Canonical default Config object |
+| `price-path-median.json` | Full 21-year median price path matches spreadsheet |
+| `year1-standard-ltv.json` | Single-year position at 35% LTV, 40% price rise |
+| `year1-income-mode.json` | Income mode withdrawal at 50% of equity gain |
+| `year1-accumulation-mode.json` | Accumulation mode: no withdrawal, BTC from rebalancing |
+| `liquidation-case.json` | Price path that triggers liquidation at year 3 |
+| `rebalance-maintain.json` | Maintain LTV rebalancing over 3 years |
+| `rebalance-never-increase.json` | Never-increase rule over 3 years |
+| `inflation-adjusted.json` | Real values match nominal / (1+inflation)^t |
+
+## 18. LTV Default Rationale
+
+The spreadsheet default LTV is 35% (the "Standard" risk profile), not Ledn's maximum 50%.
+Rationale: the app's purpose is conservative retirement planning, not maximum leverage.
+The Standard profile balances meaningful return amplification with a margin call buffer
+that requires a 50% BTC drop — severe but survivable with active management. Users can
+increase LTV to 50% (Aggressive) but the default errs on the side of safety.
+
+## 19. Disclaimers
+
+The spreadsheet and web application must display or include:
+
+- This tool is for **educational purposes only**. It does not constitute financial advice,
+  investment recommendations, or tax advice.
+- All projections are based on **user-provided assumptions** about future BTC prices and
+  borrowing rates. Actual results will differ, possibly substantially.
+- **Leveraged BTC positions carry risk of total loss** through liquidation. The model
+  illustrates liquidation scenarios but cannot predict market behavior.
+- **Past BTC price cycles do not guarantee future patterns.** The cyclical overlay is a
+  modeling convenience, not a prediction.
+- **Platform risk is not modeled.** Counterparty failure, smart contract exploits, and
+  regulatory action can result in loss of collateral regardless of LTV.
+- **Tax implications are not modeled.** Borrowing, selling BTC, and earning yield may
+  constitute taxable events. Consult a tax professional.
+- Users should verify calculations independently before making financial decisions.
+
+## 20. References
+
+- **Spreadsheet reference implementation:** `btc_leveraged_model.xlsx` (not in repo; available on request)
+- **Web app specification:** `docs/webapp-specification.md` (in the `btc-gear` repository)
+- **This document:** `docs/spreadsheet-specification.md`
+- **Platform defaults:** Ledn (ledn.io)
+- **Price anchor sources:** ARK Invest, Standard Chartered, Bernstein, Binance, CoinCodex, YouHodler (2024–2025)

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-**BTC Gear** is a client-side web application that models the long-term outcomes of using Bitcoin as collateral to borrow and accumulate more Bitcoin. The core bet: if BTC's price appreciation exceeds the cost of borrowing, the leveraged position generates excess return that can be withdrawn as income or reinvested to accumulate more BTC than simply holding.
+**BTC Gear** is a client-side web application that models the long-term outcomes of using Bitcoin as collateral to borrow stablecoins and acquire more Bitcoin. If BTC's price appreciation exceeds the cost of borrowing, the leveraged position builds equity faster than simply holding. That equity can remain in the position to accumulate more BTC (via rebalancing) or can be partially withdrawn as retirement income by selling a portion of the leveraged gains.
 
 The app replaces and extends the `btc_leveraged_model.xlsx` spreadsheet. All calculations run in the browser. No data leaves the user's device. No accounts, no servers, no analytics.
 
@@ -124,117 +124,142 @@ The engine is the heart of the application. Every function is pure: same inputs 
 // ── Input Configuration ──
 
 interface Config {
-  version: number;               // Schema version (starts at 2)
-  btcHoldings: number;           // BTC
-  currentBtcPrice: number;       // USD
-  ltvTarget: number;             // 0.0 – 0.5
-  borrowApr: number;             // 0.0975 – 0.1149
+  version: number;               // Schema version. Starts at 2 because v1 was the
+                                 // spreadsheet; v2 is the first web-app schema.
+  btcHoldings: number;           // BTC, > 0
+  currentBtcPrice: number;       // USD, > 0
+  ltvTarget: number;             // 0.0 – 0.5 (Ledn max). App default: 0.35 (Standard).
+  borrowApr: number;             // 0.0975 – 0.1149 (Ledn tiered range)
   originationFee: number;        // 0.0 – 0.02
   annualPlatformFee: number;     // 0.0 – 0.02
-  marginCallLtv: number;         // default 0.70
-  liquidationLtv: number;        // default 0.80
+  marginCallLtv: number;         // default 0.70 (Ledn)
+  liquidationLtv: number;        // default 0.80 (Ledn)
   safetyMargin: number;          // percentage points, default 0.10
   mode: 'Accumulation' | 'Income';
-  withdrawalRule: 'Fixed $' | '% of excess';
-  withdrawalAmount: number;      // dollars or fraction
+  withdrawalRule: 'Fixed $' | '% of equity gain';
+  withdrawalAmount: number;      // dollars (if Fixed $) or fraction (if %)
   rebalanceRule: 'Maintain LTV' | 'Never Increase' | 'Dynamic';
-  anchorPessimistic: number;     // 2030 price
-  anchorMedian: number;          // 2030 price
-  anchorOptimistic: number;      // 2030 price
+  anchorPessimistic: number;     // 2030 trend-line price, > 0
+  anchorMedian: number;          // 2030 trend-line price, > 0
+  anchorOptimistic: number;      // 2030 trend-line price, > 0
   growthDecay: number;           // 0.0 – 0.5
-  cycleAmplitude: number;        // 0.0 – 0.6
+  cycleAmplitude: number;        // 0.0 – 0.6. Must be < 1.0 so normalized multiplier stays positive.
   amplitudeDecay: number;        // 0.0 – 0.3
-  startYear: number;
-  projectionLength: number;      // years
+  startYear: number;             // integer ≥ 2009
+  projectionLength: number;      // integer 1–50
   showRealValues: boolean;
-  inflationRate: number;
-  scenario: 'pessimistic' | 'median' | 'optimistic'; // which price path to display
+  inflationRate: number;         // −0.10 – 0.20 (allows deflation)
+  scenario: 'pessimistic' | 'median' | 'optimistic';
+  // NOTE: borrowCurrency is intentionally absent from v2.
+  // Only stablecoin/USD borrowing is supported (matches Ledn and most platforms).
+  // BTC-denominated borrowing is out of scope for v2.
 }
 
 // ── Price Projection ──
 
 interface PricePoint {
   year: number;
-  trend: number;
-  cycleMultiplier: number;
-  price: number;
+  trend: number;                 // Trend-line price (Phase 1 or Phase 2 CAGR)
+  cycleMultiplier: number;      // Normalized: t=0 always equals 1.0
+  price: number;                // trend × cycleMultiplier
 }
 
-// ── Position Tracking ──
+// ── Position Tracking (one row per projection year) ──
 
 interface PositionRow {
   year: number;
+  // Price
   btcPrice: number;
+  // Collateral (original BTC only; purchased BTC is NOT collateral)
   collateralBtc: number;
-  collateralValue: number;
-  outstandingDebt: number;
-  newBorrowing: number;
-  btcBoughtSold: number;
-  totalLeveragedBtc: number;
-  grossPositionValue: number;
-  netEquityUsd: number;
-  netEquityBtc: number;
-  annualInterest: number;
-  annualFee: number;
-  totalAnnualCost: number;
-  priceChange: number;
-  appreciation: number;
-  excessReturnUsd: number;
-  excessReturnBtc: number;
-  effectiveLtv: number;
+  collateralValue: number;       // collateralBtc × btcPrice
+  // Debt
+  targetLtv: number;
+  outstandingDebt: number;       // Start of year (before interest + rebalancing)
+  newBorrowing: number;          // Additional borrowed this year (rebalancing)
+  btcBoughtFromRebalancing: number;  // newBorrowing ÷ btcPrice
+  // Position
+  totalLeveragedBtc: number;     // collateralBtc + cumulative purchased BTC
+  grossPositionValue: number;    // totalLeveragedBtc × btcPrice
+  netEquityUsd: number;         // grossPositionValue − outstandingDebt
+  netEquityBtc: number;         // netEquityUsd ÷ btcPrice (after debt)
+  // Costs
+  annualInterest: number;       // outstandingDebt(start) × borrowApr
+  annualFee: number;            // collateralValue × annualPlatformFee (+ origination in year 0)
+  totalAnnualCost: number;      // interest + fee
+  // Year-over-year changes
+  priceChange: number;           // btcPrice(t) − btcPrice(t−1)
+  equityGainUsd: number;        // Mark-to-market: netEquityUsd(t) − netEquityUsd(t−1)
+                                 // NOT a cashflow. Changes paper wealth, not BTC quantity.
+  // Risk
+  effectiveLtv: number;          // outstandingDebt(after rebalance) ÷ collateralValue
+  marginCallThreshold: number;
+  liquidationThreshold: number;
+  safetyBuffer: number;          // liquidationThreshold − effectiveLtv (pp)
   riskStatus: 'SAFE' | 'WARNING' | 'MARGIN CALL' | 'LIQUIDATED';
-  liquidationYear: boolean;
+  renewalRisk: boolean;         // true if LTV exceeds margin call threshold at year end
+  suggestedLtv: number;         // Model's recommended LTV for next year
 }
 
 // ── Income / Accumulation ──
 
 interface IncomeRow {
   year: number;
-  excessReturnBtc: number;
-  incomeWithdrawn: number;
-  btcSoldForIncome: number;
-  remainingExcessUsd: number;
-  remainingReinvestedBtc: number;
-  cumulativeIncome: number;
-  netBtcAfterWithdrawals: number;
-  btcAccumulationMultiple: number;
-  passiveHoldBtc: number;
-  cumulativeOutperformance: number;
-  sustainable: boolean;
+  // Wealth tracking
+  equityGainUsd: number;        // From PositionRow — mark-to-market gain this year
+  // Income mode only
+  incomeWithdrawn: number;      // $0 if Accumulation mode or equityGainUsd < 0
+  btcSoldForIncome: number;     // incomeWithdrawn ÷ btcPrice
+  cumulativeIncome: number;     // Running total
+  sustainable: boolean;         // true if incomeWithdrawn ≤ equityGainUsd and equityGainUsd > 0
+  // Accumulation mode only
+  btcFromRebalancing: number;   // BTC bought with new borrowing this year
+  totalLeveragedBtc: number;    // End-of-year after rebalancing
+  // Both modes
+  netBtcAfterWithdrawals: number; // After selling for income (if Income) or after rebalancing (if Accum)
+  btcAccumulationMultiple: number; // netBtc / startingBtc
+  passiveHoldBtc: number;       // Constant = config.btcHoldings
+  cumulativeBtcOutperformance: number; // netBtc − passiveHoldBtc
 }
 
-// ── Summary ──
+// ── Summary (one selected scenario + mode at a time) ──
+// The web app summarizes ONE scenario/mode combination. The spreadsheet
+// Summary tab covers all three scenarios — the web app equivalent is the
+// scenario selector dropdown that recomputes the summary for the selected
+// scenario. Multi-scenario comparison is deferred to v2.
 
 interface Summary {
   survived: boolean;
   liquidationYear: number | null;
-  totalIncome: number;
+  totalIncome: number;           // $0 if Accumulation mode
   averageAnnualIncome: number;
   netBtcEnd: number;
   btcAccumulationMultiple: number;
   netWorthEnd: number;
+  netWorthPassiveHold: number;   // What passive hold would be worth
   worstEffectiveLtv: number;
-  yearsInWarningZone: number;
+  yearsInWarningZone: number;    // Count of WARNING + MARGIN CALL + LIQUIDATED years
   maxDebt: number;
   totalInterest: number;
-  netBtcAccumulated: number;
-  // Real (inflation-adjusted) values
+  netBtcAccumulated: number;     // netBtcEnd − startingBtc
+  equityGainTotal: number;       // Sum of all annual equity gains
+  // Real (inflation-adjusted) values — present iff config.showRealValues
   realNetWorthEnd?: number;
   realTotalIncome?: number;
   realAverageIncome?: number;
-  cumulativeDebtErosion?: number;
+  cumulativeDebtErosion?: number; // Total inflation-driven debt reduction
 }
 
-// ── Sensitivity ──
+// ── LTV Sensitivity Sweep ──
 
 interface SensitivityPoint {
   ltv: number;
   survived: boolean;
   liquidationYear: number | null;
-  excessReturnTotal: number;
   netBtcEnd: number;
   btcAccumulationMultiple: number;
   netWorthEnd: number;
+  equityGainTotal: number;
   worstEffectiveLtv: number;
 }
 ```
@@ -277,17 +302,18 @@ Tests validate:
 
 | Test | What it proves |
 |------|---------------|
-| CAGR hits anchor exactly | `projectPrices` with anchor $500K → year 5 trend = $500,000 ± $1 |
-| Cycle math at known angles | cos(π/2) = 0 → year 1 cycle multiplier = 1.0 |
+| CAGR hits anchor exactly | Trend(5) = anchor_median ± $1 |
+| Normalized cycle at t=0 | Year 0 price = current BTC price exactly |
 | Year 0 debt calculation | 2 BTC, $75K, 35% LTV → debt = $52,500 |
-| Year 0 total BTC | 2.7 BTC (original 2 + 0.7 borrowed) |
-| Excess return after 1 year | Hand-computed value matches engine output |
-| Liquidation triggers | Price drops to trigger → riskStatus = 'LIQUIDATED' |
-| Income mode withdrawal | Mode='Income', 50% → income = 50% of excess |
-| Accumulation mode | Mode='Accumulation' → income = $0, excess reinvested |
+| Year 0 total BTC | 2.7 BTC (2 original + 0.7 borrowed) |
+| Year 1 equity gain | Hand-computed from spreadsheet: appreciation − interest |
+| Year 1 BTC from rebalancing | BTC grows only via new borrowing, not from appreciation |
+| Liquidation triggers | Price drops to liquidation threshold → riskStatus = 'LIQUIDATED' |
+| Income mode withdrawal | 50% of equity gain → income = 0.5 × equity gain. $0 if equity gain negative. |
+| Accumulation mode | income = $0, BTC grows via rebalancing only |
 | Summary aggregation | 20-year totals match spreadsheet |
 | LTV sensitivity | 50% LTV liquidates earlier than 10% LTV |
-| Inflation adjustment | Real values match nominal / (1+inflation)^t |
+| Inflation adjustment | Real USD values = nominal / (1+inflation)^t; BTC values NOT adjusted |
 
 ## 4. UI Components
 
@@ -600,9 +626,68 @@ jobs:
 - README with usage instructions
 - Deploy and share
 
-## 11. References
+## 11. Accessibility Requirements
 
-- **Spreadsheet reference implementation:** `btc_leveraged_model.xlsx`
-- **Model specification:** `specification.md` (in the same repository)
+- All form inputs have associated `<label>` elements (visible or `aria-label`)
+- Keyboard navigation: Tab through inputs, Enter/Space to activate toggles and dropdowns
+- Visible focus states on all interactive elements (custom `:focus-visible` ring)
+- Risk status is conveyed by BOTH color and text label (never color alone)
+- Charts are accompanied by data summary tables (hidden but screen-reader accessible)
+- Color contrast meets WCAG AA (4.5:1 for text, 3:1 for large text)
+- Error messages announced via `aria-live` region
+
+## 12. Responsive Layout Requirements
+
+| Breakpoint | Layout |
+|------------|--------|
+| Desktop (≥1024px) | Sidebar config panel (320px fixed) + main chart area |
+| Tablet (768–1023px) | Collapsible sidebar (hamburger toggle) + full-width charts |
+| Mobile (<768px) | Stacked: config section scrolls above charts. Charts full-width. Summary as cards. |
+
+Charts resize to container width. Config panel inputs use full-width on mobile for easier touch targets.
+
+## 13. Error and Empty States
+
+| State | Behavior |
+|-------|----------|
+| Invalid input (out of range) | Inline validation message below the field. Field border turns red. |
+| Liquidation reached | Chart ends at liquidation year. Summary shows "FAILED — Year X". Income columns grayed out. |
+| Negative BTC price (bad cycle settings) | Clamp to $1. Show warning: "Cycle amplitude too high — prices clamped." |
+| JSON import failure | Modal/notification with specific error: which field failed and why. Config unchanged. |
+| localStorage parse failure | Silent fallback to defaults. Console warning logged. |
+| Chart has no valid data | Show placeholder: "No data to display — adjust inputs." |
+| First load (no saved config) | Load defaults. No error. |
+
+## 14. Disclaimers
+
+The application must prominently display (footer or dedicated section):
+
+- This tool is for **educational purposes only**. It does not constitute financial advice, investment recommendations, or tax advice.
+- All projections are based on **user-provided assumptions**. Actual results will differ.
+- **Leveraged BTC positions carry risk of total loss** through liquidation.
+- **Platform risk is not modeled.** Counterparty failure can result in collateral loss.
+- **Tax implications are not modeled.** Consult a tax professional.
+
+## 15. Review Accountability — Remaining Items
+
+The following items from the specification review (2026-05-28) have been noted
+but not yet implemented in either spec. They are tracked for the pre-development
+hardening pass.
+
+| Review item | Status | Reasoning |
+|-------------|--------|-----------|
+| Item 13: Formal per-field formula specs for computePosition | Deferred | Column tables exist; exact formulas will be extracted from spreadsheet cells during engine implementation and documented in code comments |
+| Item 14: Formal per-field formula specs for computeIncome | Deferred | Same as above — derived from spreadsheet during implementation |
+| Item 12: Canonical default Config JSON/TS object | Deferred | Defaults table exists (§6). The actual `defaultConfig` export will be created as `configDefaults.ts` during Phase 1 implementation |
+| Item 10: Actual fixture JSON files | Deferred | Fixture names specified (§17 of spreadsheet spec). Files created during Phase 1 alongside golden tests |
+| Item 24: "Simple interest" vs "compounding debt" wording | Acknowledged | Interest is simple (debt × APR, not compounded). But interest is ADDED to debt, so debt grows year-over-year. The spreadsheet spec §9 wording updated to clarify this |
+| Item 25: 56% emergency threshold justification | Acknowledged | 56% = 80% of the 70% margin call threshold. Arbitrary safety heuristic. Will be made user-configurable in v2 |
+| Item 26: Single-scenario vs multi-scenario summary | Acknowledged | Web app summarizes one scenario at a time (through scenario selector). Multi-scenario comparison deferred to v2. Clarified in Summary type comment (§3.1) |
+
+## 16. References
+
+- **Spreadsheet reference model:** `docs/spreadsheet-specification.md` (in this repository)
+- **Web app specification:** `docs/webapp-specification.md` (this document)
+- **Reference spreadsheet:** `btc_leveraged_model.xlsx` (not in repo; available on request for fixture generation)
 - **Platform defaults:** Ledn (ledn.io) — 50% max LTV, 70% margin call, 80% liquidation, 9.75%–11.49% APR tiered rates
 - **Price anchors:** ARK Invest, Standard Chartered, Bernstein, Binance, CoinCodex, YouHodler (2024–2025 publications)
