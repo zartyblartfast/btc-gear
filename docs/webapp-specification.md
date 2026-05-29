@@ -179,22 +179,31 @@ interface PositionRow {
   preInterestLtv: number;        // debtStart / collateralValue
   annualInterest: number;        // debtStart × borrowApr ($0 in year 0)
   debtAfterInterest: number;     // debtStart + annualInterest
-  rebalanceBorrowingUsd: number; // MAX(0, target_debt − debtAfterInterest). Always ≥ 0.
-  rebalanceRepaymentUsd: number; // MAX(0, debtAfterInterest − target_debt). Always ≥ 0.
+  targetDebt: number;            // desired post-rebalance debt from selected rule
+  requiredRepaymentUsd: number;  // MAX(0, debtAfterInterest − targetDebt), before cap
+  rebalanceBorrowingUsd: number; // From selected rebalance rule. Always ≥ 0.
+  rebalanceRepaymentUsd: number; // Required repayment capped to purchased BTC available. Always ≥ 0.
+  repaymentCapped: boolean;      // true if required repayment exceeded purchased BTC available
+  externalTopUpRequired: number; // report-only shortfall; not assumed to be paid
   debtEnd: number;              // debtAfterInterest + rebalanceBorrowingUsd − rebalanceRepaymentUsd
   // BTC position
   btcBoughtFromRebalancing: number; // rebalanceBorrowingUsd / btcPrice. Always ≥ 0.
   btcSoldForRepayment: number;     // rebalanceRepaymentUsd / btcPrice. Always ≥ 0.
-  totalLeveragedBtc: number;       // Prior total + btcBoughtFromRebalancing − btcSoldForRepayment
-  grossPositionValue: number;      // totalLeveragedBtc × btcPrice
-  netEquityUsd: number;           // grossPositionValue − debtEnd
-  netEquityBtc: number;           // netEquityUsd / btcPrice
+  totalLeveragedBtcBeforeIncome: number; // Prior ending BTC + buys − repayment sales
+  grossPositionValueBeforeIncome: number; // used to compute equityGainUsd/requested income
+  netEquityUsdBeforeIncome: number; // grossPositionValueBeforeIncome − debtEnd
+  equityGainUsd: number;           // netEquityUsdBeforeIncome − priorNetEquityUsdEnd
+  btcSoldForIncome: number;        // 0 in Accumulation; capped to purchased BTC available in Income
+  totalLeveragedBtcEnd: number;    // Before-income BTC − btcSoldForIncome; feeds next year's start
+  grossPositionValueEnd: number;   // totalLeveragedBtcEnd × btcPrice
+  netEquityUsdEnd: number;        // grossPositionValueEnd − debtEnd; feeds next year's prior equity
+  netEquityBtcEnd: number;        // netEquityUsdEnd / btcPrice
   // Costs
-  annualFee: number;              // collateralValue × annualPlatformFee
+  annualFee: number;              // collateralValue × annualPlatformFee; external cash cost in v1
   totalAnnualCost: number;        // annualInterest + annualFee (+ origination in year 0)
   // Diagnostics
   priceChange: number;             // btcPrice(t) − btcPrice(t−1)
-  markToMarketReturnUsd: number;   // totalLeveragedBtc(start) × priceChange − totalAnnualCost
+  markToMarketReturnUsd: number;   // priorEndingBtc × priceChange − totalAnnualCost
                                    // Diagnostic only — NOT used for income/accumulation decisions.
   // Risk (end-of-year)
   effectiveLtvEnd: number;        // debtEnd / collateralValue
@@ -202,7 +211,7 @@ interface PositionRow {
   liquidationThreshold: number;
   safetyBuffer: number;           // liquidationThreshold − effectiveLtvEnd (percentage points)
   riskStatus: 'SAFE' | 'WARNING' | 'MARGIN CALL' | 'LIQUIDATED';
-  renewalRisk: boolean;          // true if effectiveLtvEnd ≥ marginCallThreshold
+  renewalRisk: boolean;          // true if preInterestLtv ≥ marginCallThreshold at annual check
   suggestedLtv: number;          // Model's recommendation for next year
 }
 
@@ -211,7 +220,7 @@ interface PositionRow {
 interface IncomeRow {
   year: number;
   // Wealth
-  equityGainUsd: number;           // netEquityUsd(t) − netEquityUsd(t−1). Mark-to-market.
+  equityGainUsd: number;           // From PositionRow: pre-income equity change; not post-income.
   // Income mode only
   incomeWithdrawn: number;        // $0 if Accumulation mode or equityGainUsd < 0
   btcSoldForIncome: number;       // incomeWithdrawn / btcPrice
@@ -219,13 +228,13 @@ interface IncomeRow {
   cumulativeIncome: number;       // Running total
   cumulativeBtcSoldForIncome: number; // Running total of BTC sold for income
   sustainable: boolean;           // true if incomeWithdrawn ≤ equityGainUsd and incomeWithdrawn > 0
-  // BTC tracking (see §2.4 income sale rules)
-  purchasedBtcAvailable: number;   // Cumulative BTC bought (borrowing + rebalancing) − cumulative BTC sold (income + repayment)
-  originalCollateralBtc: number;   // Starting BTC — never sold by income mode (only by liquidation/repayment)
+  // BTC tracking (see spreadsheet spec §2.4 income sale rules)
+  purchasedBtcAvailable: number;   // End-of-year purchased BTC remaining after repayment + income sales
+  originalCollateralBtc: number;   // Starting BTC — never sold by income/repayment in v1 except liquidation
   // Accumulation mode only
   btcFromRebalancing: number;     // BTC bought with new borrowing this year
   // Both modes (end-of-year)
-  grossBtcEnd: number;            // Actual BTC held before debt payoff: totalLeveragedBtc − btcSoldForIncome
+  grossBtcEnd: number;            // Actual BTC held before debt payoff: totalLeveragedBtcEnd
   netBtcAfterDebt: number;        // grossBtcEnd − debtEnd / btcPrice — what the user actually owns
   btcAccumulationMultiple: number; // netBtcAfterDebt / startingBtc
   passiveHoldBtc: number;         // Constant = config.btcHoldings
@@ -281,14 +290,20 @@ interface SensitivityPoint {
 function projectPrices(config: Config): PricePoint[]
   // Generates 3 scenarios internally; returns the selected one
 
-// position.ts  
-function computePosition(config: Config, prices: PricePoint[]): PositionRow[]
+// projection.ts
+function computeProjection(config: Config, prices: PricePoint[]): {
+  positions: PositionRow[];
+  income: IncomeRow[];
+  summary: Summary;
+}
 
-// income.ts
-function computeIncome(
-  config: Config,
-  positions: PositionRow[]
-): IncomeRow[]
+// projection.ts owns the annual loop. Within each year it must compute, in order:
+// 1) debt/rebalance and pre-income equity fields
+// 2) requested income from pre-income equityGainUsd
+// 3) capped BTC sale for income
+// 4) finalized post-income PositionRow and IncomeRow
+// Private helper functions may exist, but the engine must not compute all positions first
+// and apply income afterward; that would overstate income-mode sustainability.
 
 // summary.ts
 function computeSummary(
@@ -296,6 +311,16 @@ function computeSummary(
   positions: PositionRow[],
   income: IncomeRow[]
 ): Summary
+
+interface ProjectionState {
+  priorEndingBtc: number;          // previous year's totalLeveragedBtcEnd
+  priorNetEquityUsdEnd: number;    // previous year's post-income net equity
+  debtStart: number;               // previous year's debtEnd
+  purchasedBtcAvailable: number;   // end-of-prior-year non-collateral BTC available
+  cumulativeIncome: number;
+  cumulativeBtcSoldForIncome: number;
+  liquidated: boolean;
+}
 
 // sensitivity.ts — runs projection for each LTV in sweep
 function ltvSensitivity(
@@ -306,7 +331,7 @@ function ltvSensitivity(
 
 ### 3.3 Golden Tests
 
-Each engine function has a corresponding test file with **golden test fixtures** — known input/output pairs derived from the verified spreadsheet.
+Each public engine function and critical annual-cycle helper has **golden test fixtures** — known input/output pairs derived from the verified spreadsheet.
 
 Tests validate:
 
@@ -316,10 +341,12 @@ Tests validate:
 | Normalized cycle at t=0 | Year 0 price = current BTC price exactly |
 | Year 0 debt calculation | 2 BTC, $75K, 35% LTV → debt = $52,500 |
 | Year 0 total BTC | 2.7 BTC (2 original + 0.7 borrowed) |
-| Year 1 equity gain | Hand-computed from spreadsheet: appreciation − interest |
-| Year 1 BTC from rebalancing | BTC grows only via new borrowing, not from appreciation |
-| Liquidation triggers | Price drops to liquidation threshold → riskStatus = 'LIQUIDATED' |
-| Income mode withdrawal | 50% of equity gain → income = 0.5 × equity gain. $0 if equity gain negative. |
+| Year 1 equity gain | Exact hand-computed value from spreadsheet: $74,967.75 with defaults and +40% BTC year |
+| Year 1 BTC from rebalancing | BTC grows only via new borrowing: 0.142550 BTC from $14,967.75 borrowed at $105,000/BTC |
+| Liquidation triggers | Pre-interest LTV at annual check reaches liquidation threshold → riskStatus = 'LIQUIDATED' |
+| Income mode withdrawal | 50% of equity gain → requested income = 0.5 × equity gain; actual income capped to purchased BTC available; $0 if equity gain negative |
+| Income feedback | BTC sold for income reduces totalLeveragedBtcEnd and lowers next year's starting BTC |
+| Repayment cap | Rebalance repayment sells purchased BTC only; insufficient purchased BTC sets repayment-capped/external-top-up flag |
 | Accumulation mode | income = $0, BTC grows via rebalancing only |
 | Summary aggregation | 20-year totals match spreadsheet |
 | LTV sensitivity | 50% LTV liquidates earlier than 10% LTV |
@@ -531,6 +558,8 @@ All defaults match the Ledn platform as of May 2026:
 | inflationRate | 3% |
 | scenario | median |
 
+Fee handling follows the spreadsheet spec v1 rule: origination and platform fees default to zero. If nonzero, they are reported as external cash costs and included in totalAnnualCost/diagnostics; they are not added to debt and do not trigger BTC sales.
+
 ## 7. Testing Strategy
 
 ### 7.1 Golden Tests (Engine)
@@ -549,9 +578,9 @@ All defaults match the Ledn platform as of May 2026:
 
 ### 7.3 Integration Tests
 
-- Full projection with default config produces >0 excess return
+- Full projection with default config produces positive ending net equity and non-negative net BTC after debt
 - Changing LTV from 10% to 50% changes liquidation risk status
-- Income mode produces non-zero income values
+- Income mode produces non-zero income values in positive-equity-gain years and reduces future BTC balances after withdrawals
 - Switching scenarios changes price paths
 
 ### 7.4 CI Pipeline

@@ -91,7 +91,7 @@ rr += 1
 rr = section(ws, rr, 'MODE')
 rr = inp(ws, rr, 'Mode', 'Accumulation', 'toggle', '"Accumulation" or "Income"')
 rr = inp(ws, rr, 'Withdrawal Rule', '% of equity gain', 'toggle', '"Fixed $" or "% of equity gain"')
-rr = inp(ws, rr, 'Withdrawal Amount', 0.50, 'USD or %', '50% of excess or $X/year')
+rr = inp(ws, rr, 'Withdrawal Amount', 0.50, 'USD or %', '50% of equity gain or $X/year')
 rr += 1
 
 rr = section(ws, rr, 'REBALANCING')
@@ -252,13 +252,21 @@ print("Tab 2 (Price Projection) created.")
 # ============================================================
 ws3 = wb.create_sheet("Leveraged Position")
 ws3.sheet_properties.tabColor = "1A6B7A"
-cols3 = ['Year', 'BTC Price', 'Collateral BTC', 'Collateral Value',
-         'Target LTV', 'Outstanding Debt', 'New Borrowing', 'BTC Bought/Sold',
-         'Total Lev BTC', 'Gross Position Value', 'Net Equity USD', 'Net Equity BTC',
-         'Annual Interest', 'Annual Fee', 'Total Annual Cost',
-         'Price Change $', 'Appreciation', 'Equity Gain USD', 'Equity Gain BTC',
-         'Effective LTV', 'Margin Call Thr', 'Liquidation Thr',
-         'Safety Buffer', 'Risk Status', 'LTV Suggestion']
+cols3 = [
+    'Year', 'BTC Price', 'Collateral BTC', 'Collateral Value', 'Target LTV',
+    'Debt Start', 'Pre-Interest LTV', 'Annual Interest', 'Debt After Interest',
+    'Target Debt', 'Required Repayment', 'Rebalance Borrowing', 'Rebalance Repayment',
+    'Repayment Capped?', 'External Top-Up Required', 'Debt End',
+    'BTC Bought (Rebal)', 'BTC Sold (Repayment)', 'Total Lev BTC Before Income',
+    'Gross Value Before Income', 'Net Equity Before Income', 'Equity Gain USD',
+    'Requested Income USD', 'Income Withdrawn USD', 'BTC Sold for Income',
+    'Total Lev BTC End', 'Gross Position Value End', 'Net Equity USD End',
+    'Net Equity BTC End', 'Annual Fee', 'Total Annual Cost', 'Price Change $',
+    'Mark-to-Market Return', 'Effective LTV End', 'Margin Call Thr',
+    'Liquidation Thr', 'Safety Buffer', 'Risk Status', 'Renewal Risk',
+    'LTV Suggestion', 'Purchased BTC Before Repay', 'Purchased BTC Before Income',
+    'Purchased BTC End'
+]
 for i, h in enumerate(cols3, 1):
     cell(ws3, 1, i, h, font=hdr_font, fill=hdr_fill)
     ws3.column_dimensions[get_column_letter(i)].width = 16
@@ -272,101 +280,106 @@ for t in range(N):
     # BTC price = from Tab2 col H (median price)
     cell(ws3, r, 2, f"='Price Projection'!H{r}", fmt='$#,##0')
 
-    # Collateral BTC = BTC Holdings (constant unless modified)
-    if t == 0:
-        cell(ws3, r, 3, f'={BTC_HOLDINGS}', fmt='0.00000000')
-    else:
-        cell(ws3, r, 3, f'=C{r-1}+H{r-1}', fmt='0.00000000')
+    # Collateral BTC = original holdings. Constant in v1 unless liquidation occurs.
+    cell(ws3, r, 3, f'={BTC_HOLDINGS}', fmt='0.00000000')
 
-    # Collateral Value
+    # Collateral Value and Target LTV
     cell(ws3, r, 4, f'=B{r}*C{r}', fmt='$#,##0')
-
-    # Target LTV
     cell(ws3, r, 5, f'={LTV}', fmt='0.0%')
 
-    # Outstanding Debt (end of year = prior debt + interest + new borrowing)
+    # Debt lifecycle in canonical order
     if t == 0:
-        cell(ws3, r, 6, f'=D{r}*{LTV}', fmt='$#,##0')
+        cell(ws3, r, 6, f'=D{r}*E{r}', fmt='$#,##0')  # Debt start/setup debt
+        cell(ws3, r, 8, 0, fmt='$#,##0')              # Annual interest
     else:
-        # F{r-1} = prior year debt, M{r} = interest on prior debt, G{r} = new borrowing
-        cell(ws3, r, 6, f'=F{r-1}+M{r}+G{r}', fmt='$#,##0')
+        cell(ws3, r, 6, f'=P{r-1}', fmt='$#,##0')
+        cell(ws3, r, 8, f'=F{r}*{BORROW_APR}', fmt='$#,##0')
+    cell(ws3, r, 7, f'=IF(D{r}>0,F{r}/D{r},0)', fmt='0.0%')
+    cell(ws3, r, 9, f'=F{r}+H{r}', fmt='$#,##0')
 
-    # New Borrowing (for Maintain LTV: adjust to target)
+    # Price change before target-debt formula because Dynamic uses YoY move
     if t == 0:
-        cell(ws3, r, 7, 0, fmt='$#,##0')
+        cell(ws3, r, 32, 0, fmt='$#,##0')
+        yoy_expr = '0'
     else:
-        # Target debt = collateral_value * LTV. Borrow more if below target.
-        # But first account for interest: pre-interest debt = F{r-1}, post-interest = F{r-1}+M{r}
-        # Rebalance to restore target LTV after interest accrual
-        cell(ws3, r, 7, f'=MAX(0,D{r}*E{r}-(F{r-1}+M{r}))', fmt='$#,##0')
+        cell(ws3, r, 32, f'=B{r}-B{r-1}', fmt='$#,##0')
+        yoy_expr = f'IF(B{r-1}=0,0,B{r}/B{r-1}-1)'
 
-    # BTC Bought/Sold
-    cell(ws3, r, 8, f'=IF(G{r}>0,G{r}/B{r},0)', fmt='0.00000000')
-
-    # Total Leveraged BTC
+    # Purchased BTC available before repayment excludes original collateral.
     if t == 0:
-        cell(ws3, r, 9, f'=C{r}+{BTC_HOLDINGS}*{LTV}*{BTC_PRICE}/B{r}', fmt='0.00000000')
+        initial_borrowed_btc = f'({BTC_HOLDINGS}*{LTV}*{BTC_PRICE}/B{r})'
+        cell(ws3, r, 41, f'={initial_borrowed_btc}', fmt='0.00000000')
     else:
-        cell(ws3, r, 9, f'=I{r-1}+H{r}', fmt='0.00000000')
+        cell(ws3, r, 41, f'=AQ{r-1}', fmt='0.00000000')
 
-    # Gross Position Value
-    cell(ws3, r, 10, f'=I{r}*B{r}', fmt='$#,##0')
+    # Target debt by selected rebalance rule.
+    maintain_target = f'D{r}*E{r}'
+    never_increase = f'IF(G{r}<={MARGIN_CALL}-{SAFETY_MARGIN},I{r},{maintain_target})'
+    dynamic_target = f'IF(({yoy_expr})>-0.10,I{r},IF(({yoy_expr})>=-0.30,{maintain_target},IF(({yoy_expr})>=-0.50,D{r}*MAX(G{r}-0.10,0.10),0)))'
+    target_debt = f'=IF({REBAL_RULE}="Never Increase",{never_increase},IF({REBAL_RULE}="Dynamic",{dynamic_target},{maintain_target}))'
+    cell(ws3, r, 10, target_debt, fmt='$#,##0')
 
-    # Net Equity USD
-    cell(ws3, r, 11, f'=J{r}-F{r}', fmt='$#,##0')
-
-    # Net Equity BTC
-    cell(ws3, r, 12, f'=IF(B{r}>0,K{r}/B{r},0)', fmt='0.00000000')
-
-    # Annual Interest (simple interest on start-of-year debt; $0 in setup year)
+    # Required repayment and rebalance actions. Repayment is capped to purchased BTC available.
+    cell(ws3, r, 11, f'=MAX(0,I{r}-J{r})', fmt='$#,##0')
     if t == 0:
-        cell(ws3, r, 13, 0, fmt='$#,##0')
+        cell(ws3, r, 12, 0, fmt='$#,##0')
     else:
-        cell(ws3, r, 13, f'=F{r-1}*{BORROW_APR}', fmt='$#,##0')
+        cell(ws3, r, 12, f'=IF({REBAL_RULE}="Never Increase",0,MAX(0,J{r}-I{r}))', fmt='$#,##0')
+    cell(ws3, r, 13, f'=MIN(K{r},AO{r}*B{r})', fmt='$#,##0')
+    cell(ws3, r, 14, f'=K{r}>M{r}')
+    cell(ws3, r, 15, f'=MAX(0,K{r}-M{r})', fmt='$#,##0')
+    cell(ws3, r, 16, f'=I{r}+L{r}-M{r}', fmt='$#,##0')
 
-    # Annual Platform Fee
-    cell(ws3, r, 14, f'=D{r}*{PLAT_FEE}', fmt='$#,##0')
-
-    # Total Annual Cost
-    orig = f'+F{r}*{ORIG_FEE}' if t == 0 else ''
-    cell(ws3, r, 15, f'=M{r}+N{r}{orig}', fmt='$#,##0')
-
-    # Price Change
+    # BTC position before income
+    cell(ws3, r, 17, f'=IF(B{r}>0,L{r}/B{r},0)', fmt='0.00000000')
+    cell(ws3, r, 18, f'=IF(B{r}>0,M{r}/B{r},0)', fmt='0.00000000')
     if t == 0:
-        cell(ws3, r, 16, 0, fmt='$#,##0')
+        cell(ws3, r, 19, f'=C{r}+AO{r}+Q{r}-R{r}', fmt='0.00000000')
     else:
-        cell(ws3, r, 16, f'=B{r}-B{r-1}', fmt='$#,##0')
-
-    # Appreciation
+        cell(ws3, r, 19, f'=Z{r-1}+Q{r}-R{r}', fmt='0.00000000')
+    cell(ws3, r, 20, f'=S{r}*B{r}', fmt='$#,##0')
+    cell(ws3, r, 21, f'=T{r}-P{r}', fmt='$#,##0')
     if t == 0:
-        cell(ws3, r, 17, 0, fmt='$#,##0')
+        cell(ws3, r, 22, 0, fmt='$#,##0')
     else:
-        cell(ws3, r, 17, f'=I{r-1}*P{r}', fmt='$#,##0')
+        cell(ws3, r, 22, f'=U{r}-AB{r-1}', fmt='$#,##0')
 
-    # Excess Return USD
-    cell(ws3, r, 18, f'=Q{r}-O{r}', fmt='$#,##0')
+    # Income request and cap. Income is based on pre-income equity gain, then capped to purchased BTC.
+    cell(ws3, r, 23,
+         f'=IF(OR({MODE}="Accumulation",V{r}<=0),0,IF({WITHDRAW_RULE}="% of equity gain",V{r}*{WITHDRAW_AMT},{WITHDRAW_AMT}))',
+         fmt='$#,##0')
 
-    # Excess Return BTC
-    cell(ws3, r, 19, f'=IF(B{r}>0,R{r}/B{r},0)', fmt='0.00000000')
+    # Purchased BTC after repayment / before income.
+    cell(ws3, r, 42, f'=AO{r}+Q{r}-R{r}', fmt='0.00000000')
 
-    # Effective LTV
-    cell(ws3, r, 20, f'=IF(D{r}>0,F{r}/D{r},0)', fmt='0.0%')
+    cell(ws3, r, 25, f'=IF({MODE}="Income",MIN(IF(B{r}>0,W{r}/B{r},0),AP{r}),0)', fmt='0.00000000')
+    cell(ws3, r, 24, f'=Y{r}*B{r}', fmt='$#,##0')
+    cell(ws3, r, 26, f'=S{r}-Y{r}', fmt='0.00000000')
+    cell(ws3, r, 43, f'=AP{r}-Y{r}', fmt='0.00000000')
 
-    # Margin call threshold
-    cell(ws3, r, 21, f'={MARGIN_CALL}', fmt='0.0%')
+    # Post-income equity fields
+    cell(ws3, r, 27, f'=Z{r}*B{r}', fmt='$#,##0')
+    cell(ws3, r, 28, f'=AA{r}-P{r}', fmt='$#,##0')
+    cell(ws3, r, 29, f'=IF(B{r}>0,AB{r}/B{r},0)', fmt='0.00000000')
 
-    # Liquidation threshold
-    cell(ws3, r, 22, f'={LIQ_LTV}', fmt='0.0%')
+    # Costs and diagnostics
+    cell(ws3, r, 30, f'=D{r}*{PLAT_FEE}', fmt='$#,##0')
+    orig = f'+P{r}*{ORIG_FEE}' if t == 0 else ''
+    cell(ws3, r, 31, f'=H{r}+AD{r}{orig}', fmt='$#,##0')
+    if t == 0:
+        cell(ws3, r, 33, 0, fmt='$#,##0')
+    else:
+        cell(ws3, r, 33, f'=Z{r-1}*AF{r}-AE{r}', fmt='$#,##0')
 
-    # Safety Buffer
-    cell(ws3, r, 23, f'=IF(D{r}>0,U{r}-T{r},0)', fmt='0.00%')
-
-    # Risk Status
-    cell(ws3, r, 24, f'=IF(T{r}>={LIQ_LTV},"LIQUIDATED",IF(T{r}>={MARGIN_CALL},"MARGIN CALL",IF(T{r}>={MARGIN_CALL}-{SAFETY_MARGIN},"WARNING","SAFE")))')
-
-    # LTV Suggestion (simple: maintain if safe, reduce if warning)
-    cell(ws3, r, 25, f'=IF(X{r}="SAFE",{LTV},IF(X{r}="WARNING",MAX({LTV}-0.05,0.05),IF(X{r}="MARGIN CALL",MAX(T{r}-0.1,0.01),0)))',
-         fmt='0.0%')
+    # Risk fields. Liquidation/margin checks use pre-interest LTV for renewal risk;
+    # end-of-year risk status displays the final effective LTV.
+    cell(ws3, r, 34, f'=IF(D{r}>0,P{r}/D{r},0)', fmt='0.0%')
+    cell(ws3, r, 35, f'={MARGIN_CALL}', fmt='0.0%')
+    cell(ws3, r, 36, f'={LIQ_LTV}', fmt='0.0%')
+    cell(ws3, r, 37, f'=IF(D{r}>0,AJ{r}-AH{r},0)', fmt='0.00%')
+    cell(ws3, r, 38, f'=IF(G{r}>={LIQ_LTV},"LIQUIDATED",IF(AH{r}>={MARGIN_CALL},"MARGIN CALL",IF(AH{r}>={MARGIN_CALL}-{SAFETY_MARGIN},"WARNING","SAFE")))')
+    cell(ws3, r, 39, f'=G{r}>={MARGIN_CALL}')
+    cell(ws3, r, 40, f'=IF(AH{r}=0,E{r},J{r}/D{r})', fmt='0.0%')
 
 print("Tab 3 (Leveraged Position) created.")
 
@@ -375,11 +388,14 @@ print("Tab 3 (Leveraged Position) created.")
 # ============================================================
 ws4 = wb.create_sheet("Income-Accumulation")
 ws4.sheet_properties.tabColor = "1A6B7A"
-cols4 = ['Year', 'Equity Gain USD', 'Income Withdrawn USD', 'BTC Sold for Income',
-         'Cumulative Income', 'BTC from Rebalancing',
-         'Total Lev BTC', 'Net BTC After Withdrawals',
-         'BTC Accum Mult', 'Passive Hold BTC', 'Cumul Outperformance',
-         'Annual Inc % of Capital', 'Sustainable?']
+cols4 = [
+    'Year', 'Equity Gain USD', 'Requested Income USD', 'Income Withdrawn USD',
+    'BTC Sold for Income', 'Income Capped?', 'Cumulative Income',
+    'Cumulative BTC Sold Income', 'BTC from Rebalancing', 'Total Lev BTC End',
+    'Net BTC After Debt', 'BTC Accum Mult', 'Passive Hold BTC',
+    'Cumul Outperformance', 'Annual Inc % of Capital', 'Purchased BTC Available',
+    'Sustainable?'
+]
 for i, h in enumerate(cols4, 1):
     cell(ws4, 1, i, h, font=hdr_font, fill=hdr_fill)
     ws4.column_dimensions[get_column_letter(i)].width = 16
@@ -389,49 +405,26 @@ for t in range(N):
     r = t + 2
     yr = 2025 + t
     cell(ws4, r, 1, yr)
-
-    # Equity gain USD from Tab3 col R (was: Excess Return)
-    cell(ws4, r, 2, f"='Leveraged Position'!R{r}", fmt='$#,##0')
-
-    # Income withdrawn: if Mode="Accumulation" then 0
-    # else if Withdrawal Rule="% of equity gain" then equity_gain * withdrawal_amt
-    # else withdrawal_amt (fixed $)
-    cell(ws4, r, 3,
-         f"=IF({MODE}=\"Accumulation\",0,IF({WITHDRAW_RULE}=\"% of equity gain\",MAX(0,'Leveraged Position'!R{r}*{WITHDRAW_AMT}),{WITHDRAW_AMT}))",
-         fmt='$#,##0')
-
-    # BTC sold for income
-    cell(ws4, r, 4, f"=IF('Leveraged Position'!B{r}>0,C{r}/'Leveraged Position'!B{r},0)", fmt='0.00000000')
-
-    # Cumulative income
+    cell(ws4, r, 2, f"='Leveraged Position'!V{r}", fmt='$#,##0')
+    cell(ws4, r, 3, f"='Leveraged Position'!W{r}", fmt='$#,##0')
+    cell(ws4, r, 4, f"='Leveraged Position'!X{r}", fmt='$#,##0')
+    cell(ws4, r, 5, f"='Leveraged Position'!Y{r}", fmt='0.00000000')
+    cell(ws4, r, 6, f'=D{r}<C{r}')
     if t == 0:
-        cell(ws4, r, 5, f'=C{r}', fmt='$#,##0')
+        cell(ws4, r, 7, f'=D{r}', fmt='$#,##0')
+        cell(ws4, r, 8, f'=E{r}', fmt='0.00000000')
     else:
-        cell(ws4, r, 5, f'=E{r-1}+C{r}', fmt='$#,##0')
-
-    # BTC from rebalancing (Tab 3 col H)
-    cell(ws4, r, 6, f"='Leveraged Position'!H{r}", fmt='0.00000000')
-
-    # Total leveraged BTC (Tab 3 col I)
-    cell(ws4, r, 7, f"='Leveraged Position'!I{r}", fmt='0.00000000')
-
-    # Net BTC after withdrawals
-    cell(ws4, r, 8, f"='Leveraged Position'!L{r}-D{r}", fmt='0.00000000')
-
-    # BTC accumulation multiple
-    cell(ws4, r, 9, f'=IF({BTC_HOLDINGS}>0,H{r}/{BTC_HOLDINGS},0)', fmt='0.00x')
-
-    # Passive hold BTC
-    cell(ws4, r, 10, f'={BTC_HOLDINGS}', fmt='0.00000000')
-
-    # Cumulative outperformance
-    cell(ws4, r, 11, f'=H{r}-J{r}', fmt='0.00000000')
-
-    # Annual income % of starting capital
-    cell(ws4, r, 12, f'=IF({BTC_HOLDINGS}*{BTC_PRICE}>0,C{r}/({BTC_HOLDINGS}*{BTC_PRICE}),0)', fmt='0.0%')
-
-    # Sustainable?
-    cell(ws4, r, 13, f'=IF({MODE}="Accumulation","N/A",IF(C{r}<=0,"NO INCOME (BTC fell)",IF(C{r}<=R{r},"SUSTAINABLE","DRAINING CAPITAL")))')
+        cell(ws4, r, 7, f'=G{r-1}+D{r}', fmt='$#,##0')
+        cell(ws4, r, 8, f'=H{r-1}+E{r}', fmt='0.00000000')
+    cell(ws4, r, 9, f"='Leveraged Position'!Q{r}", fmt='0.00000000')
+    cell(ws4, r, 10, f"='Leveraged Position'!Z{r}", fmt='0.00000000')
+    cell(ws4, r, 11, f"='Leveraged Position'!AC{r}", fmt='0.00000000')
+    cell(ws4, r, 12, f'=IF({BTC_HOLDINGS}>0,K{r}/{BTC_HOLDINGS},0)', fmt='0.00x')
+    cell(ws4, r, 13, f'={BTC_HOLDINGS}', fmt='0.00000000')
+    cell(ws4, r, 14, f'=K{r}-M{r}', fmt='0.00000000')
+    cell(ws4, r, 15, f'=IF({BTC_HOLDINGS}*{BTC_PRICE}>0,D{r}/({BTC_HOLDINGS}*{BTC_PRICE}),0)', fmt='0.0%')
+    cell(ws4, r, 16, f"='Leveraged Position'!AQ{r}", fmt='0.00000000')
+    cell(ws4, r, 17, f'=IF({MODE}="Accumulation","N/A",IF(D{r}<=0,"NO INCOME (BTC fell)",IF(F{r},"INCOME CAPPED",IF(D{r}<=B{r},"SUSTAINABLE","DRAINING CAPITAL"))))')
 
 print("Tab 4 (Income/Accumulation) created.")
 
@@ -445,7 +438,7 @@ for c in range(2, 5):
     ws5.column_dimensions[get_column_letter(c)].width = 22
 
 ws5.merge_cells('A1:D1')
-cell(ws5, 1, 1, 'SUMMARY — Accumulation Mode (Median Scenario)', font=title_font, align='left')
+cell(ws5, 1, 1, f'="SUMMARY — "&{MODE}&" Mode (Median Scenario)"', font=title_font, align='left')
 
 # Projection period header
 cell(ws5, 2, 1, 'Projection Period', font=sec_font, fill=sec_fill, align='left')
@@ -466,36 +459,51 @@ METRICS_START_ROW = 7
 # Define the last-row reference for dynamic formulas
 LAST_ROW_REF = f'{PROJ_LENGTH}+2'
 
+# Summary formulas intentionally branch directly on MODE for end-of-period values.
+# This makes mode-sensitive summary metrics recalculate immediately when the
+# Inputs tab mode toggle changes, instead of depending only on transitive
+# recalculation through the year-by-year sheets.
+SUMMARY_NET_BTC_END = (
+    f'=IF({MODE}="Accumulation",'
+    f'INDEX(\'Leveraged Position\'!U:U,{LAST_ROW_REF})/INDEX(\'Leveraged Position\'!B:B,{LAST_ROW_REF}),'
+    f'INDEX(\'Leveraged Position\'!AC:AC,{LAST_ROW_REF}))'
+)
+SUMMARY_NET_WORTH_END = (
+    f'=IF({MODE}="Accumulation",'
+    f'INDEX(\'Leveraged Position\'!U:U,{LAST_ROW_REF}),'
+    f'INDEX(\'Leveraged Position\'!AB:AB,{LAST_ROW_REF}))'
+)
+
 metrics = [
     ('Starting BTC', f'={BTC_HOLDINGS}', '0.00000000'),
     ('Starting Net Worth (USD)', f'={BTC_HOLDINGS}*{BTC_PRICE}', '$#,##0'),
     ('Survived Full Term?',
-     f'=IF(COUNTIF(\'Leveraged Position\'!X2:INDEX(\'Leveraged Position\'!X:X,{LAST_ROW_REF}),"LIQUIDATED")>0,"FAILED","SURVIVED")', None),
+     f'=IF(COUNTIF(\'Leveraged Position\'!AL2:INDEX(\'Leveraged Position\'!AL:AL,{LAST_ROW_REF}),"LIQUIDATED")>0,"FAILED","SURVIVED")', None),
     ('Liquidation Year (if any)',
-     f'=IFERROR(MATCH("LIQUIDATED",\'Leveraged Position\'!X2:INDEX(\'Leveraged Position\'!X:X,{LAST_ROW_REF}),0)-1,"N/A")', None),
+     f'=IFERROR(MATCH("LIQUIDATED",\'Leveraged Position\'!AL2:INDEX(\'Leveraged Position\'!AL:AL,{LAST_ROW_REF}),0)-1,"N/A")', None),
     ('Total Income Withdrawn',
-     f'=IF({MODE}="Accumulation","N/A",INDEX(\'Income-Accumulation\'!E:E,{LAST_ROW_REF}))', '$#,##0'),
+     f'=IF({MODE}="Accumulation","N/A",INDEX(\'Income-Accumulation\'!G:G,{LAST_ROW_REF}))', '$#,##0'),
     ('Average Annual Income',
-     f'=IF({MODE}="Accumulation","N/A",INDEX(\'Income-Accumulation\'!E:E,{LAST_ROW_REF})/{PROJ_LENGTH})', '$#,##0'),
+     f'=IF({MODE}="Accumulation","N/A",INDEX(\'Income-Accumulation\'!G:G,{LAST_ROW_REF})/{PROJ_LENGTH})', '$#,##0'),
     ('Net BTC at End (after debt)',
-     f'=INDEX(\'Leveraged Position\'!L:L,{LAST_ROW_REF})', '0.00000000'),
+     SUMMARY_NET_BTC_END, '0.00000000'),
     ('vs Passive Hold (BTC)', f'={BTC_HOLDINGS}', '0.00000000'),
     ('BTC Accumulation Multiple',
-     f'=INDEX(\'Income-Accumulation\'!I:I,{LAST_ROW_REF})', '0.00x'),
+     f'=({SUMMARY_NET_BTC_END[1:]})/{BTC_HOLDINGS}', '0.00x'),
     ('Net Worth at End (USD)',
-     f'=INDEX(\'Leveraged Position\'!K:K,{LAST_ROW_REF})', '$#,##0'),
+     SUMMARY_NET_WORTH_END, '$#,##0'),
     ('vs Passive Hold (USD)',
      f'={BTC_HOLDINGS}*INDEX(\'Price Projection\'!H:H,{LAST_ROW_REF})', '$#,##0'),
     ('Worst Effective LTV',
-     f'=MAX(\'Leveraged Position\'!T2:INDEX(\'Leveraged Position\'!T:T,{LAST_ROW_REF}))', '0.0%'),
+     f'=MAX(\'Leveraged Position\'!AH2:INDEX(\'Leveraged Position\'!AH:AH,{LAST_ROW_REF}))', '0.0%'),
     ('Years in Warning/Red Zone',
-     f'=COUNTIF(\'Leveraged Position\'!X2:INDEX(\'Leveraged Position\'!X:X,{LAST_ROW_REF}),"WARNING")+COUNTIF(\'Leveraged Position\'!X2:INDEX(\'Leveraged Position\'!X:X,{LAST_ROW_REF}),"MARGIN CALL")+COUNTIF(\'Leveraged Position\'!X2:INDEX(\'Leveraged Position\'!X:X,{LAST_ROW_REF}),"LIQUIDATED")', None),
+     f'=COUNTIF(\'Leveraged Position\'!AL2:INDEX(\'Leveraged Position\'!AL:AL,{LAST_ROW_REF}),"WARNING")+COUNTIF(\'Leveraged Position\'!AL2:INDEX(\'Leveraged Position\'!AL:AL,{LAST_ROW_REF}),"MARGIN CALL")+COUNTIF(\'Leveraged Position\'!AL2:INDEX(\'Leveraged Position\'!AL:AL,{LAST_ROW_REF}),"LIQUIDATED")', None),
     ('Maximum Debt Carried',
-     f'=MAX(\'Leveraged Position\'!F2:INDEX(\'Leveraged Position\'!F:F,{LAST_ROW_REF}))', '$#,##0'),
+     f'=MAX(\'Leveraged Position\'!P2:INDEX(\'Leveraged Position\'!P:P,{LAST_ROW_REF}))', '$#,##0'),
     ('Total Interest Paid',
-     f'=SUM(\'Leveraged Position\'!M2:INDEX(\'Leveraged Position\'!M:M,{LAST_ROW_REF}))', '$#,##0'),
+     f'=SUM(\'Leveraged Position\'!H2:INDEX(\'Leveraged Position\'!H:H,{LAST_ROW_REF}))', '$#,##0'),
     ('Net BTC Accumulated',
-     f'=INDEX(\'Leveraged Position\'!L:L,{LAST_ROW_REF})-{BTC_HOLDINGS}', '0.00000000'),
+     f'=({SUMMARY_NET_BTC_END[1:]})-{BTC_HOLDINGS}', '0.00000000'),
 ]
 
 for i, (name, formula, fmt) in enumerate(metrics):
@@ -508,19 +516,19 @@ for i, (name, formula, fmt) in enumerate(metrics):
 # ============================================================
 # Tab 3: Risk status colours — use wide range to accommodate longer projections
 # Data starts row 2; cover rows 2-52 (up to 50 years)
-ws3.conditional_formatting.add('X2:X52',
+ws3.conditional_formatting.add('AL2:AL52',
     CellIsRule(operator='equal', formula=['"SAFE"'], fill=green_bg))
-ws3.conditional_formatting.add('X2:X52',
+ws3.conditional_formatting.add('AL2:AL52',
     CellIsRule(operator='equal', formula=['"WARNING"'], fill=amber_bg))
-ws3.conditional_formatting.add('X2:X52',
+ws3.conditional_formatting.add('AL2:AL52',
     CellIsRule(operator='equal', formula=['"MARGIN CALL"'], fill=amber_bg))
-ws3.conditional_formatting.add('X2:X52',
+ws3.conditional_formatting.add('AL2:AL52',
     CellIsRule(operator='equal', formula=['"LIQUIDATED"'], fill=red_bg))
 
 # Tab 4: Sustainability colours
-ws4.conditional_formatting.add('M2:M52',
+ws4.conditional_formatting.add('Q2:Q52',
     CellIsRule(operator='equal', formula=['"DRAINING CAPITAL"'], fill=red_bg))
-ws4.conditional_formatting.add('M2:M52',
+ws4.conditional_formatting.add('Q2:Q52',
     CellIsRule(operator='equal', formula=['"SUSTAINABLE"'], fill=green_bg))
 
 # Chart: Price Projection (Tab 2)
@@ -567,8 +575,8 @@ chart2.style = 10
 chart2.height = 15
 chart2.width = 35
 
-data_a = Reference(ws4, min_col=8, min_row=1, max_row=CHART_ROWS)
-data_b = Reference(ws4, min_col=10, min_row=1, max_row=CHART_ROWS)
+data_a = Reference(ws4, min_col=11, min_row=1, max_row=CHART_ROWS)
+data_b = Reference(ws4, min_col=13, min_row=1, max_row=CHART_ROWS)
 cats2 = Reference(ws4, min_col=1, min_row=2, max_row=CHART_ROWS)
 chart2.add_data(data_a, titles_from_data=True)
 chart2.add_data(data_b, titles_from_data=True)

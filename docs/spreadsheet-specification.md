@@ -28,7 +28,10 @@ Each subsequent year (deterministic cycle, in this order):
   6. Interest accrues: interest = debt × APR  (simple interest, added to debt)
   7. Rebalancing: per the rebalance rule, borrow more or repay debt
   8. Mode action (accumulation or income — see §2.4)
+     - Accumulation: no BTC is sold for income
+     - Income: sell purchased/non-collateral BTC only, capped by available purchased BTC
   9. End-of-year state: ending BTC, debt, equity, LTV
+     Next year's starting BTC equals this year's ending BTC after any income sale.
 ```
 
 ### 2.2 Where the Return Comes From — Two Separate Concepts
@@ -121,22 +124,26 @@ portion of the leveraged position's gains. Mechanically, this means selling some
 stablecoins and withdrawing those stablecoins. The user specifies either a fixed dollar
 amount or a percentage of that year's equity gain. The remaining value stays in the
 position. If equity gain is negative (BTC fell), income is $0 for that year — the user
-cannot withdraw from a shrinking position without selling collateral, which the model
-flags but does not force.
+cannot withdraw from a shrinking position without selling original collateral, which is
+out of scope for v1.
 
 **Income sale rules (order of which BTC is sold):**
 1. **Sell purchased BTC first.** BTC acquired through borrowing and rebalancing is sold
    before any original collateral is touched.
-2. **Do not sell original collateral BTC** unless the user explicitly overrides this rule
-   (not modeled in v1). Original collateral BTC is reserved for maintaining the borrowing
-   position and is only sold by the model during liquidation or debt repayment.
+2. **Do not sell original collateral BTC in v1.** Original collateral BTC is reserved
+   for maintaining the borrowing position and is only lost by the model during liquidation.
+   Selling original collateral for income is a future enhancement because it changes the
+   LTV denominator and requires additional collateral-management rules.
 3. **Cap income to available purchased BTC.** If the requested income withdrawal would
    require selling more BTC than the user holds outside collateral, income is capped at
    the USD value of available purchased BTC, and a warning is shown: "Income capped —
    insufficient non-collateral BTC."
-4. **Cumulative tracking.** The model tracks cumulative BTC sold for income. If cumulative
-   sold BTC exceeds cumulative purchased BTC (from borrowing + rebalancing), the user
-   is selling into original collateral — the model flags this but does not stop it.
+4. **Feed the sale back into future years.** BTC sold for income reduces ending BTC for
+   the year. The next year's starting BTC uses this post-income balance. Income withdrawal
+   does not repay debt unless a separate repayment action is specified by the rebalance rule.
+5. **Cumulative tracking.** The model tracks cumulative BTC sold for income and cumulative
+   purchased BTC. In v1, cumulative BTC sold for income must never exceed cumulative
+   purchased BTC; the cap in rule 3 enforces this.
 
 In both modes, the underlying mechanism is the same: borrow against BTC, buy more BTC, let
 appreciation do the work. The mode only determines what happens to the gains at year-end.
@@ -151,33 +158,32 @@ appreciation do the work. The mode only determines what happens to the gains at 
 | LTV target | 35% | 35% |
 | **Borrowing** | | |
 | Initial debt (year 0) | $52,500 | — |
-| Interest accrued (11.49%) | — | $52,500 × 11.49% = $6,032 |
-| Debt after interest | — | $58,532 |
-| Pre-rebalance LTV | — | $58,532 / $210,000 = 27.9% |
-| New borrowing to restore 35% LTV | — | $210,000 × 0.35 − $58,532 = $14,968 |
+| Interest accrued (11.49%) | — | $52,500 × 11.49% = $6,032.25 |
+| Debt after interest | — | $58,532.25 |
+| Pre-rebalance LTV | — | $58,532.25 / $210,000 = 27.87% |
+| New borrowing to restore 35% LTV | — | $210,000 × 0.35 − $58,532.25 = $14,967.75 |
 | Year-end debt | $52,500 | $73,500 |
 | **BTC position** | | |
-| BTC bought at setup | 0.70 | — |
-| BTC bought from rebalancing | — | $14,968 / $105,000 = 0.143 |
-| Total leveraged BTC | 2.70 | 2.843 |
+| BTC bought at setup | 0.700000 | — |
+| BTC bought from rebalancing | — | $14,967.75 / $105,000 = 0.142550 |
+| Total leveraged BTC | 2.700000 | 2.842550 |
 | **Wealth** | | |
-| Gross position value | $202,500 | $298,515 |
-| Net equity (USD) | $150,000 | $225,015 |
-| Equity gain (USD) | — | $75,015 |
+| Gross position value | $202,500 | $298,467.75 |
+| Net equity (USD) | $150,000 | $224,967.75 |
+| Equity gain (USD) | — | $74,967.75 |
 | **Passive hold comparison** | | |
 | Passive hold BTC | 2.00 | 2.00 |
 | Passive hold value | $150,000 | $210,000 |
 | Passive gain | — | $60,000 |
-| **Leverage benefit** | | $75,015 − $60,000 = $15,015 |
+| **Leverage benefit** | | $74,967.75 − $60,000 = $14,967.75 |
 
 Key observations:
-- BTC grew from 2.70 to 2.843 — the growth came from REBALANCING ($14,968 new borrowing →
-  0.143 BTC), not from appreciation
-- The $75,015 equity gain is mark-to-market wealth, not spendable cash. In accumulation mode
+- BTC grew from 2.700000 to 2.842550 — the growth came from REBALANCING ($14,967.75 new borrowing →
+  0.142550 BTC), not from appreciation
+- The $74,967.75 equity gain is mark-to-market wealth, not spendable cash. In accumulation mode
   it stays in the position. In income mode, a portion can be withdrawn by selling BTC.
-- The leverage added $15,015 beyond passive holding — the spread between appreciation on
-  the borrowed 0.70 BTC ($21,000) and the interest cost ($6,032) minus the new interest
-  that will be owed on the additional borrowing
+- The leverage added $14,967.75 beyond passive holding — the spread between appreciation on
+  the borrowed 0.70 BTC ($21,000) and the interest cost ($6,032.25)
 - After rebalancing, LTV returns to exactly 35% ($73,500 / $210,000)
 - If BTC had fallen, LTV would have risen, and the rebalancing rule might require repaying
   debt (selling BTC) to avoid approaching the margin call threshold
@@ -259,9 +265,13 @@ Example (Standard, 35% LTV): Margin call at $75,000 × (0.35 / 0.70) = $37,500 �
 | Rebalance rule | How to adjust borrowing each year | Maintain target LTV | choice |
 
 Options for rebalancing:
-- **Maintain target LTV:** Each year, adjust the borrowed amount (up or down) to return to the target LTV. When BTC rises, borrow more. When BTC falls, repay debt to avoid liquidation.
-- **Never increase debt:** Borrow only at year 0. Let LTV drift down as BTC rises. Only repay if LTV breaches safety margin. More conservative.
-- **Dynamic (follow model suggestions):** Follow the suggested adjustments in §6.3 based on price movement.
+- **Maintain target LTV:** Each year, adjust the borrowed amount up or down to return to the target LTV after interest accrues. When BTC rises, borrow more. When BTC falls, repay debt to avoid liquidation.
+- **Never increase debt:** Borrow only at year 0. Do not borrow additional stablecoins after setup. Let LTV drift down as BTC rises. Repay only if end-of-year effective LTV would exceed the safety trigger defined in §6.3.
+- **Dynamic (follow model suggestions):** Use the deterministic target-debt rules in §6.3 based on year-over-year price movement.
+
+**Repayment source rule for v1:** any repayment required by a rebalance rule sells purchased/non-collateral BTC first. Original collateral BTC is not sold for repayment in v1. If available purchased BTC is insufficient to fund the required repayment, the repayment is capped at the USD value of available purchased BTC, the row is flagged `REPAYMENT CAPPED`, and the remaining shortfall is shown as an external top-up requirement. This avoids circular LTV math from shrinking the collateral denominator.
+
+**Fee handling for v1:** defaults are zero. If nonzero fees are entered, origination fee and annual platform fee are treated as external cash costs for reporting only: they increase `totalAnnualCost` and reduce diagnostic/equity-return metrics, but they are not added to debt and do not force BTC sales. A future version may model fee financing explicitly.
 
 ### 4.5 Inflation Assumption
 
@@ -322,7 +332,7 @@ years) while anchoring the starting point.
 **Important: Anchor vs displayed price.** The 2030 anchor applies to the **trend line**, not
 the final cycle-adjusted price. At year 5, the trend line exactly equals the anchor, but the
 displayed price will differ due to the cycle overlay. For example, a $500K median anchor
-produces Trend(5) = $500K, but Price(5) may be ~$357K if the cycle is in a neutral phase.
+produces Trend(5) = $500K, but Price(5) is ~$373K under the default amplitude decay.
 The anchor represents the user's long-term conviction about where the trend sits; the cycle
 overlay adds realistic short-term variation around that trend.
 
@@ -400,8 +410,8 @@ With defaults: Current $75,000, Median anchor $500,000, Growth decay 30%, Amplit
 
 Note: Amplitude decay applies per cycle (floor(t/4)). At t=4 (2029), the effective amplitude
 drops to 0.40 × 0.85 = 0.34, changing the raw multiplier from 1.40 to 1.34. At t=5 (2030),
-the normalized cycle multiplier becomes 1/1.34 = 0.746, making the displayed price $373K
-rather than the $357K shown before decay was applied. Trend(5) still hits $500K exactly.
+the normalized cycle multiplier becomes 1/1.34 = 0.746, making the displayed price $373K.
+Trend(5) still hits $500K exactly; the cycle overlay only affects the displayed price.
 
 ### 5.5 Anchor Default Sources
 
@@ -433,18 +443,28 @@ The deterministic cycle follows §2.1 exactly. Each year executes in this order:
    renewal risk — platform may require collateral top-up to renew
 6. Interest accrues: annualInterest = debtStart × APR (simple interest).
    debtAfterInterest = debtStart + annualInterest.
-7. Rebalancing: per the rebalance rule.
-   - If borrowing: rebalanceBorrowingUsd = MAX(0, target_debt − debtAfterInterest)
-   - If repaying: rebalanceRepaymentUsd = MAX(0, debtAfterInterest − target_debt)
-   where target_debt = collateral_value × target_LTV
+7. Rebalancing: per the selected rebalance rule (§6.3).
+   - Each rule first computes targetDebt and requiredRepaymentUsd
+   - If borrowing: rebalanceBorrowingUsd = MAX(0, targetDebt − debtAfterInterest)
+   - If repaying: rebalanceRepaymentUsd = MIN(requiredRepaymentUsd, availableRepayment)
+   - externalTopUpRequired = MAX(0, requiredRepaymentUsd − availableRepayment)
 8. End-of-year debt: debtEnd = debtAfterInterest + rebalanceBorrowingUsd − rebalanceRepaymentUsd
-9. BTC position update:
+9. BTC position update before income:
    - btcBoughtFromRebalancing = rebalanceBorrowingUsd / btcPrice
    - btcSoldForRepayment = rebalanceRepaymentUsd / btcPrice
-   - totalLeveragedBtc += btcBoughtFromRebalancing − btcSoldForRepayment
-10. Mode action (accumulation or income — feeds Tab 4)
+   - totalLeveragedBtcBeforeIncome = priorEndingBtc + btcBoughtFromRebalancing − btcSoldForRepayment
+10. Mode action (accumulation or income — feeds Tab 4):
+    - grossPositionValueBeforeIncome = totalLeveragedBtcBeforeIncome × btcPrice
+    - netEquityUsdBeforeIncome = grossPositionValueBeforeIncome − debtEnd
+    - equityGainUsd = netEquityUsdBeforeIncome − priorNetEquityUsdEnd
+    - requestedIncome = 0 if equityGainUsd ≤ 0; otherwise fixed amount or equityGainUsd × withdrawal%
+    - Accumulation: btcSoldForIncome = 0
+    - Income: btcSoldForIncome = MIN(requestedIncome / btcPrice, purchasedBtcAvailableBeforeIncome)
+    - totalLeveragedBtcEnd = totalLeveragedBtcBeforeIncome − btcSoldForIncome
 11. End-of-year metrics: effectiveLtvEnd = debtEnd / collateralValue.
     Next year's debtStart = this year's debtEnd.
+    Next year's priorEndingBtc = this year's totalLeveragedBtcEnd.
+    Next year's priorNetEquityUsdEnd = this year's netEquityUsdEnd.
     Risk status determined from effectiveLtvEnd.
 ```
 
@@ -465,7 +485,7 @@ Each column maps to one field in the annual cycle. Fields are shown in cycle ord
 |--------|-------|---------|
 | Year | — | Calendar year |
 | BTC price | btcPrice | From Tab 2 |
-| Collateral BTC | collateralBtc | Original holdings (constant unless repayment sells collateral — see §7 rule) |
+| Collateral BTC | collateralBtc | Original holdings. Constant in v1 unless liquidation occurs. |
 | Collateral value (USD) | collateralValue | collateralBtc × btcPrice |
 | Target LTV | targetLtv | User's chosen LTV |
 | **Debt lifecycle** | | |
@@ -473,46 +493,126 @@ Each column maps to one field in the annual cycle. Fields are shown in cycle ord
 | Pre-interest LTV | preInterestLtv | debtStart / collateralValue |
 | Annual interest | annualInterest | debtStart × APR ($0 in year 0) |
 | Debt after interest | debtAfterInterest | debtStart + annualInterest |
-| Rebalance borrowing (USD) | rebalanceBorrowingUsd | MAX(0, collateralValue × targetLtv − debtAfterInterest). Always ≥ 0. |
-| Rebalance repayment (USD) | rebalanceRepaymentUsd | MAX(0, debtAfterInterest − collateralValue × targetLtv). Always ≥ 0. |
+| Target debt | targetDebt | Desired debt after rebalancing, from the selected rule in §6.3. |
+| Required repayment (USD) | requiredRepaymentUsd | MAX(0, debtAfterInterest − targetDebt). Before v1 cap is applied. |
+| Rebalance borrowing (USD) | rebalanceBorrowingUsd | MAX(0, targetDebt − debtAfterInterest). Always ≥ 0. |
+| Rebalance repayment (USD) | rebalanceRepaymentUsd | Required repayment from rebalance rule, capped to available purchased BTC × btcPrice in v1. Always ≥ 0. |
+| Repayment capped? | repaymentCapped | TRUE if requiredRepaymentUsd > available purchased BTC × btcPrice. |
+| External top-up required | externalTopUpRequired | requiredRepaymentUsd − rebalanceRepaymentUsd. Report-only; not assumed to be paid. |
 | Debt end-of-year | debtEnd | debtAfterInterest + rebalanceBorrowingUsd − rebalanceRepaymentUsd |
 | **BTC position** | | |
 | BTC bought (rebalancing) | btcBoughtFromRebalancing | rebalanceBorrowingUsd / btcPrice. Always ≥ 0. |
 | BTC sold (repayment) | btcSoldForRepayment | rebalanceRepaymentUsd / btcPrice. Always ≥ 0. |
-| Total leveraged BTC | totalLeveragedBtc | Prior total + btcBoughtFromRebalancing − btcSoldForRepayment (year 0: collateralBtc + initial_borrowed_BTC) |
-| Gross position value | grossPositionValue | totalLeveragedBtc × btcPrice |
-| Net equity (USD) | netEquityUsd | grossPositionValue − debtEnd |
-| Net equity (BTC) | netEquityBtc | netEquityUsd / btcPrice |
+| Total leveraged BTC before income | totalLeveragedBtcBeforeIncome | Prior ending BTC + btcBoughtFromRebalancing − btcSoldForRepayment (year 0: collateralBtc + initial_borrowed_BTC) |
+| Gross value before income | grossPositionValueBeforeIncome | totalLeveragedBtcBeforeIncome × btcPrice. Used to compute equity gain and requested income. |
+| Net equity before income | netEquityUsdBeforeIncome | grossPositionValueBeforeIncome − debtEnd. Used to compute equity gain and requested income. |
+| Equity gain (USD) | equityGainUsd | netEquityUsdBeforeIncome − priorNetEquityUsdEnd. If negative, requested income is $0. |
+| BTC sold for income | btcSoldForIncome | From §7.2. Zero in accumulation mode. Capped to purchased BTC available. |
+| Total leveraged BTC end | totalLeveragedBtcEnd | totalLeveragedBtcBeforeIncome − btcSoldForIncome. This becomes next year's prior ending BTC. |
+| Gross position value end | grossPositionValueEnd | totalLeveragedBtcEnd × btcPrice |
+| Net equity end (USD) | netEquityUsdEnd | grossPositionValueEnd − debtEnd. This becomes next year's priorNetEquityUsdEnd. |
+| Net equity end (BTC) | netEquityBtcEnd | netEquityUsdEnd / btcPrice |
 | **Costs** | | |
+| Annual platform fee | annualFee | collateralValue × annualPlatformFee. External cash cost in v1; not added to debt. |
 | Total annual cost | totalAnnualCost | annualInterest + annualFee (+ origination fee in year 0 only) |
 | **Diagnostics** | | |
 | Price change ($) | priceChange | btcPrice − prior year btcPrice |
-| Mark-to-market return | markToMarketReturnUsd | totalLeveragedBtc(start) × priceChange − totalAnnualCost. Diagnostic only — NOT used for income or accumulation decisions. |
+| Mark-to-market return | markToMarketReturnUsd | priorEndingBtc × priceChange − totalAnnualCost. Diagnostic only — NOT used for income or accumulation decisions. |
 | **Risk** | | |
 | Effective LTV (end of year) | effectiveLtvEnd | debtEnd / collateralValue |
 | Margin call threshold | marginCallThreshold | From Inputs |
 | Liquidation threshold | liquidationThreshold | From Inputs |
 | Safety buffer | safetyBuffer | liquidationThreshold − effectiveLtvEnd (percentage points) |
 | Risk status | riskStatus | SAFE / WARNING / MARGIN CALL / LIQUIDATED (based on effectiveLtvEnd) |
-| Renewal risk | renewalRisk | TRUE if effectiveLtvEnd ≥ marginCallThreshold |
+| Renewal risk | renewalRisk | TRUE if preInterestLtv ≥ marginCallThreshold at the annual renewal check. |
 | Suggested LTV | suggestedLtv | Model's recommendation for next year (§6.3) |
 
-### 6.3 Dynamic LTV Suggestion
+### 6.3 Rebalance Rule Formulas
 
-Applied at year-end. Conservative — prioritizes survival over maximizing exposure.
+All rebalance rules operate after interest accrues and before income withdrawal. Define:
 
-| Price movement (YoY) | Suggestion |
-|----------------------|------------|
-| Rose >50% | Maintain current dollar debt (LTV drifts down). Do not borrow more. The windfall should strengthen the position, not expand risk. |
-| Rose 10–50% | Maintain dollar debt. Modest gains don't warrant more leverage. |
-| Flat (±10%) | Maintain dollar debt. |
-| Fell 10–30% | Reduce dollar debt to return effective LTV to target. |
-| Fell 30–50% | Aggressively deleverage: target LTV = max(current effective LTV − 10pp, 10%). |
-| Fell >50% | Emergency: repay as much as possible. If effective LTV exceeds 56% (80% of the margin call threshold at 70%), the suggestion is "PAUSE — do not borrow; repay from reserve if possible." At 70% LTV the platform issues a margin call. At 80% LTV the position is liquidated. |
+```
+maintainTargetDebt = collateralValue × targetLtv
+safetyTriggerLtv   = marginCallThreshold − safetyMargin
+safetyTargetDebt   = collateralValue × targetLtv
+availableRepayment = purchasedBtcAvailableBeforeRepayment × btcPrice
+```
+
+`purchasedBtcAvailableBeforeRepayment` equals cumulative BTC bought through the initial
+borrow and prior rebalancing, minus prior income sales and prior repayment sales. It excludes
+original collateral BTC.
+
+After repayment, the income cap uses:
+
+```
+purchasedBtcAvailableBeforeIncome = purchasedBtcAvailableBeforeRepayment
+                                    + btcBoughtFromRebalancing
+                                    − btcSoldForRepayment
+```
+
+After income, the carried-forward balance is:
+
+```
+purchasedBtcAvailableEnd = purchasedBtcAvailableBeforeIncome − btcSoldForIncome
+```
+
+Repayments are capped in v1:
+
+```
+rebalanceRepaymentUsd = MIN(requiredRepaymentUsd, availableRepayment)
+externalTopUpRequired = MAX(0, requiredRepaymentUsd − availableRepayment)
+```
+
+#### Maintain target LTV
+
+```
+targetDebt = maintainTargetDebt
+rebalanceBorrowingUsd = MAX(0, targetDebt − debtAfterInterest)
+requiredRepaymentUsd  = MAX(0, debtAfterInterest − targetDebt)
+```
+
+#### Never increase debt
+
+Borrow only in year 0. After setup:
+
+```
+rebalanceBorrowingUsd = 0
+if debtAfterInterest / collateralValue <= safetyTriggerLtv:
+    requiredRepaymentUsd = 0
+else:
+    requiredRepaymentUsd = MAX(0, debtAfterInterest − safetyTargetDebt)
+```
+
+This lets LTV drift lower in bull markets but deleverages if the position approaches the
+margin-call zone. With defaults, `safetyTriggerLtv = 70% − 10pp = 60%`.
+
+#### Dynamic
+
+Dynamic is deterministic; it converts the year-over-year BTC price move into a target debt:
+
+| Price movement (YoY) | Target debt rule |
+|----------------------|------------------|
+| Rose >50% | `targetDebt = debtAfterInterest` (no new borrowing; let LTV improve) |
+| Rose 10–50% | `targetDebt = debtAfterInterest` |
+| Flat (±10%) | `targetDebt = debtAfterInterest` |
+| Fell 10–30% | `targetDebt = maintainTargetDebt` |
+| Fell 30–50% | `targetLtvDynamic = MAX(preInterestLtv − 0.10, 0.10)`; `targetDebt = collateralValue × targetLtvDynamic` |
+| Fell >50% | `targetDebt = 0`; repayment is capped to available purchased BTC and any shortfall is flagged as external top-up required |
+
+Then:
+
+```
+rebalanceBorrowingUsd = MAX(0, targetDebt − debtAfterInterest)
+requiredRepaymentUsd  = MAX(0, debtAfterInterest − targetDebt)
+```
+
+The displayed `suggestedLtv` is `targetDebt / collateralValue`. Dynamic mode never sells
+original collateral in v1; if purchased BTC cannot fund a required repayment, the model flags
+that external reserves would be needed to fully follow the suggestion.
 
 ### 6.4 Liquidation
 
-If effective LTV reaches or exceeds the liquidation threshold in any year:
+If pre-interest LTV reaches or exceeds the liquidation threshold at the liquidation check step (§6.1 step 4):
 
 - The position is marked **LIQUIDATED** for that year and all subsequent years
 - The model records: year of liquidation, BTC lost (collateral seized), total income taken before failure, net gain/loss
@@ -525,7 +625,7 @@ This is the most important output. It tells the user whether their chosen LTV su
 
 ## 7. Tab 4 — Income / Accumulation
 
-This tab uses the position data from Tab 3 and applies the chosen mode.
+This tab uses the position data from Tab 3 and applies the chosen mode. In income mode, the sale of BTC is not merely a display calculation: it reduces `totalLeveragedBtcEnd`, and that post-income BTC balance feeds the next year's Tab 3 starting position.
 
 ### 7.1 Accumulation Mode
 
@@ -540,7 +640,7 @@ mark-to-market only — the user's net worth increases on paper but no cash is r
 | Starting total BTC | Total leveraged BTC from prior year-end |
 | Rebalance borrowing | New stablecoins borrowed this year (from Tab 3) |
 | BTC bought from rebalancing | Rebalance borrowing ÷ current BTC price |
-| Total leveraged BTC (end of year) | Starting BTC + BTC bought from rebalancing |
+| Total leveraged BTC (end of year) | Starting BTC + BTC bought from rebalancing − BTC sold for repayment. No income sale in accumulation mode. |
 | Net BTC owned (after repaying all debt) | (Total BTC × price − debt) ÷ price |
 | BTC accumulation multiple | Net BTC owned ÷ starting BTC holdings |
 | Passive hold BTC | Starting BTC (constant) |
@@ -562,7 +662,7 @@ in the position.
 | Income withdrawn (USD) | Amount taken out this year. $0 if equity gain is negative. |
 | BTC sold for income | Income withdrawn ÷ BTC price |
 | Remaining equity (USD) | Equity gain − income withdrawn (retained in position) |
-| Total BTC after withdrawal | Position BTC − BTC sold for income |
+| Total BTC after withdrawal | Position BTC before income − BTC sold for income. This is the next year's starting BTC. |
 | Cumulative income withdrawn | Running total |
 | Net BTC owned (after withdrawals + debt) | Total BTC − (debt ÷ BTC price) |
 | Annual income as % of starting capital | Income ÷ (starting_BTC × starting_price) |
@@ -581,7 +681,9 @@ in the position.
 
 - If equity gain is **negative** in a year (BTC fell and interest exceeded any appreciation),
   income withdrawal is $0. The user cannot withdraw from a shrinking position without selling
-  collateral, which the model flags but does not force.
+  original collateral, which is out of scope for v1.
+- Income is capped to purchased/non-collateral BTC available. If requested income exceeds
+  that cap, the model withdraws the capped amount and sets the income-capped warning.
 - If the user has set a fixed dollar withdrawal that exceeds the typical equity gain in good
   years, the model shows a warning: "Withdrawal rate exceeds sustainable level — position
   will deplete over time."
@@ -780,10 +882,12 @@ reference spreadsheet.
 | `price-path-median.json` | Full 21-year median price path matches spreadsheet |
 | `year1-standard-ltv.json` | Single-year position at 35% LTV, 40% price rise |
 | `year1-income-mode.json` | Income mode withdrawal at 50% of equity gain |
+| `income-feedback.json` | BTC sold for income reduces the next year's starting BTC |
 | `year1-accumulation-mode.json` | Accumulation mode: no withdrawal, BTC from rebalancing |
 | `liquidation-case.json` | Price path that triggers liquidation at year 3 |
 | `rebalance-maintain.json` | Maintain LTV rebalancing over 3 years |
 | `rebalance-never-increase.json` | Never-increase rule over 3 years |
+| `repayment-cap.json` | Repayment sells purchased BTC only and flags external top-up if capped |
 | `inflation-adjusted.json` | Real values match nominal / (1+inflation)^t |
 
 ## 18. LTV Default Rationale
