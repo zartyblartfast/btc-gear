@@ -72,19 +72,8 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
     ws = wb.active
     ws.title = "Inputs"
     _title(ws, "BTC-Backed Loan Model v2 Inputs")
-    acc = projection.accumulation_rows[0]
-    inc = projection.income_rows[0]
     cfg = default_v2_inputs().accumulation_config
     income_cfg = default_v2_inputs().income_config
-    year1_income_capacity = (
-        income_cfg.starting_btc
-        * income_cfg.current_btc_price
-        * min(
-            income_cfg.income_ltv_ceiling,
-            income_cfg.risk_thresholds.liquidation_ltv
-            * (1 - income_cfg.risk_thresholds.minimum_liquidation_buffer),
-        )
-    )
 
     rows = [
         ("Shared", None, None, None),
@@ -99,12 +88,14 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
         ("Accumulation", None, None, None),
         ("Target Effective LTV", cfg.target_effective_ltv, "%", "Recursive setup/top-up target"),
         ("Max Effective LTV", cfg.max_effective_ltv, "%", "Hard cap"),
-        ("Setup Collateral BTC", acc.collateral_btc, "BTC", "Computed audit output"),
+        ("Setup Collateral BTC", "=$B$7/(1-MIN($B$14,$B$15,$B$11*(1-$B$12)))", "BTC", "Formula output from starting BTC and effective LTV cap"),
         ("Income", None, None, None),
-        ("Max Available Annual Income (Year 1)", year1_income_capacity, "USD", "Calculated from BTC collateral, LTV ceiling, and liquidation buffer"),
+        ("Max Available Annual Income (Year 1)", "=MAX(0,$B$7*'Price Projection'!B5*MIN($B$20,$B$11*(1-$B$12)))", "USD", "Formula output from BTC collateral, LTV ceiling, and liquidation buffer"),
         ("Selected Annual Income Draw", income_cfg.selected_annual_income_draw, "USD", "User-selected draw; capped by max available annual income"),
         ("Income LTV Ceiling", income_cfg.income_ltv_ceiling, "%", "Safe debt ceiling"),
-        ("Setup Collateral BTC", inc.collateral_btc, "BTC", "Income keeps BTC constant"),
+        ("Setup Collateral BTC", "=$B$7", "BTC", "Income keeps BTC constant"),
+        ("Advanced Risk", None, None, None),
+        ("Warning LTV", cfg.risk_thresholds.warning_ltv, "%", "Status changes to WARNING at or above this LTV"),
     ]
     _headers(ws, 3, ["Input", "Value", "Unit", "Notes"])
     for idx, row in enumerate(rows, start=4):
@@ -148,24 +139,33 @@ def _write_accumulation(wb: Workbook, projection: V2ProjectionResult) -> None:
         "Risk Status",
     ]
     _headers(ws, 3, headers)
-    passive_btc = projection.accumulation_rows[0].net_btc_after_debt
-    prior = None
+    borrow_ltv = "MIN('Inputs'!$B$14,'Inputs'!$B$15,'Inputs'!$B$11*(1-'Inputs'!$B$12))"
     for row_idx, row in enumerate(projection.accumulation_rows, start=4):
-        starting_collateral = passive_btc if prior is None else prior.collateral_btc
-        starting_debt = 0.0 if prior is None else prior.debt_usd
-        debt_after_interest = starting_debt + row.interest_usd
-        pre_action_ltv = effective_ltv(debt_after_interest, starting_collateral, row.btc_price)
-        net_equity_usd = row.total_btc * row.btc_price - row.debt_usd
-        drop_to_liquidation = price_drop_to_threshold(row.liquidation_price, row.btc_price)
-        leverage_multiple = row.total_btc / passive_btc
+        if row_idx == 4:
+            starting_collateral = "='Inputs'!$B$7"
+            starting_debt = 0
+            interest = 0
+            debt_after_interest = "=D4+E4"
+            new_borrowing = f"=MAX(0,({borrow_ltv}*C4*B4-F4)/(1-{borrow_ltv}))"
+        else:
+            prev = row_idx - 1
+            starting_collateral = f"=J{prev}"
+            starting_debt = f"=K{prev}"
+            interest = f"=D{row_idx}*'Inputs'!$B$8"
+            debt_after_interest = f'=IF(\'Inputs\'!$B$9="capitalized",D{row_idx}+E{row_idx},D{row_idx})'
+            new_borrowing = (
+                f"=IF(G{row_idx}>='Inputs'!$B$10,0,"
+                f"MAX(0,({borrow_ltv}*C{row_idx}*B{row_idx}-F{row_idx})/(1-{borrow_ltv})))"
+            )
         values = [
             row.year, f"='Price Projection'!B{row_idx}", starting_collateral, starting_debt,
-            row.interest_usd, debt_after_interest, pre_action_ltv, row.borrowed_usd,
-            row.btc_purchased, row.collateral_btc, row.debt_usd, row.total_btc,
-            row.debt_btc_equivalent, row.net_btc_after_debt,
-            row.total_btc - passive_btc, net_equity_usd, row.effective_ltv,
-            leverage_multiple, row.margin_call_price, row.liquidation_price,
-            drop_to_liquidation, row.warning or "SAFE",
+            interest, debt_after_interest, f"=IF(C{row_idx}*B{row_idx}=0,0,F{row_idx}/(C{row_idx}*B{row_idx}))", new_borrowing,
+            f"=H{row_idx}/B{row_idx}", f"=C{row_idx}+I{row_idx}", f"=F{row_idx}+H{row_idx}", f"=J{row_idx}",
+            f"=K{row_idx}/B{row_idx}", f"=L{row_idx}-M{row_idx}",
+            f"=L{row_idx}-'Inputs'!$B$7", f"=L{row_idx}*B{row_idx}-K{row_idx}", f"=IF(J{row_idx}*B{row_idx}=0,0,K{row_idx}/(J{row_idx}*B{row_idx}))",
+            f"=L{row_idx}/'Inputs'!$B$7", f"=IF(K{row_idx}=0,0,K{row_idx}/(J{row_idx}*'Inputs'!$B$10))", f"=IF(K{row_idx}=0,0,K{row_idx}/(J{row_idx}*'Inputs'!$B$11))",
+            f"=IF(T{row_idx}<=0,0,1-T{row_idx}/B{row_idx})",
+            f'=IF(Q{row_idx}=0,"SAFE",IF(Q{row_idx}>=\'Inputs\'!$B$11,"LIQUIDATED",IF(Q{row_idx}>=\'Inputs\'!$B$10,"MARGIN CALL",IF(OR(Q{row_idx}>=\'Inputs\'!$B$23,U{row_idx}<\'Inputs\'!$B$12),"WARNING","SAFE"))))',
         ]
         formats = [
             None, USD_FMT, BTC_FMT, USD_FMT,
@@ -177,7 +177,6 @@ def _write_accumulation(wb: Workbook, projection: V2ProjectionResult) -> None:
         ]
         for col, (value, fmt) in enumerate(zip(values, formats, strict=True), start=1):
             _cell(ws, row_idx, col, value, fmt=fmt)
-        prior = row
     _autosize(ws)
 
 
@@ -194,34 +193,29 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
         "Sustainability Status",
     ]
     _headers(ws, 3, headers)
-    prior = None
-    cumulative_income = 0.0
-    selected_income_draw = default_v2_inputs().income_config.selected_annual_income_draw
-    income_ltv_ceiling = default_v2_inputs().income_config.income_ltv_ceiling
-    thresholds = default_v2_inputs().income_config.risk_thresholds
     for row_idx, row in enumerate(projection.income_rows, start=4):
-        starting_debt = 0.0 if prior is None else prior.debt_usd
-        debt_after_interest = starting_debt + row.interest_usd
-        selected_draw = 0.0 if row.year == 0 else selected_income_draw
-        ltv_limit_debt = row.collateral_btc * row.btc_price * income_ltv_ceiling
-        buffer_limit_debt = (
-            row.collateral_btc
-            * row.btc_price
-            * thresholds.liquidation_ltv
-            * (1 - thresholds.minimum_liquidation_buffer)
-        )
-        max_safe_debt = min(ltv_limit_debt, buffer_limit_debt)
-        available_capacity = max(0.0, max_safe_debt - debt_after_interest)
-        cumulative_income += row.income_borrowed_usd
-        net_equity_usd = row.collateral_btc * row.btc_price - row.debt_usd
-        drop_to_liquidation = price_drop_to_threshold(row.liquidation_price, row.btc_price)
+        if row_idx == 4:
+            starting_debt = 0
+            interest = 0
+            debt_after_interest = "=D4+E4"
+            selected_draw = 0
+            cumulative_income = "=I4"
+        else:
+            starting_debt = f"=L{row_idx - 1}"
+            interest = f"=D{row_idx}*'Inputs'!$B$8"
+            debt_after_interest = f'=IF(\'Inputs\'!$B$9="capitalized",D{row_idx}+E{row_idx},D{row_idx})'
+            selected_draw = "='Inputs'!$B$19"
+            cumulative_income = f"=K{row_idx - 1}+I{row_idx}"
+        available_capacity = f"=MAX(0,MIN(C{row_idx}*B{row_idx}*'Inputs'!$B$20,C{row_idx}*B{row_idx}*'Inputs'!$B$11*(1-'Inputs'!$B$12))-F{row_idx})"
+        income_borrowed = f"=IF(IF(C{row_idx}*B{row_idx}=0,0,F{row_idx}/(C{row_idx}*B{row_idx}))>='Inputs'!$B$10,0,MIN(G{row_idx},H{row_idx}))"
         values = [
-            row.year, f"='Price Projection'!B{row_idx}", row.collateral_btc, starting_debt,
-            row.interest_usd, debt_after_interest, selected_draw, available_capacity,
-            row.income_borrowed_usd, row.income_shortfall_usd, cumulative_income,
-            row.debt_usd, row.debt_btc_equivalent, row.net_btc_after_debt,
-            net_equity_usd, row.effective_ltv, row.margin_call_price,
-            row.liquidation_price, drop_to_liquidation, row.warning,
+            row.year, f"='Price Projection'!B{row_idx}", "='Inputs'!$B$7", starting_debt,
+            interest, debt_after_interest, selected_draw, available_capacity,
+            income_borrowed, f"=G{row_idx}-I{row_idx}", cumulative_income,
+            f"=F{row_idx}+I{row_idx}", f"=L{row_idx}/B{row_idx}", f"=C{row_idx}-M{row_idx}",
+            f"=C{row_idx}*B{row_idx}-L{row_idx}", f"=IF(C{row_idx}*B{row_idx}=0,0,L{row_idx}/(C{row_idx}*B{row_idx}))", f"=IF(L{row_idx}=0,0,L{row_idx}/(C{row_idx}*'Inputs'!$B$10))",
+            f"=IF(L{row_idx}=0,0,L{row_idx}/(C{row_idx}*'Inputs'!$B$11))", f"=IF(R{row_idx}<=0,0,1-R{row_idx}/B{row_idx})",
+            f'=IF(P{row_idx}>=\'Inputs\'!$B$11,"LIQUIDATED",IF(P{row_idx}>=\'Inputs\'!$B$10,"MARGIN CALL",IF(OR(P{row_idx}>=\'Inputs\'!$B$23,S{row_idx}<\'Inputs\'!$B$12),"WARNING",IF(AND(G{row_idx}>0,I{row_idx}=0),"FAILED",IF(I{row_idx}<G{row_idx},"CONSTRAINED","SAFE")))))',
         ]
         formats = [
             None, USD_FMT, BTC_FMT, USD_FMT,
@@ -233,43 +227,33 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
         ]
         for col, (value, fmt) in enumerate(zip(values, formats, strict=True), start=1):
             _cell(ws, row_idx, col, value, fmt=fmt)
-        prior = row
     _autosize(ws)
 
 
 def _write_risk_alerts(wb: Workbook, projection: V2ProjectionResult) -> None:
     ws = wb.create_sheet("Risk Alerts")
     _title(ws, "Risk Alerts")
-    acc_rows = projection.accumulation_rows
-    inc_rows = projection.income_rows
-    passive_btc = acc_rows[0].net_btc_after_debt
-    acc_drop_values = [
-        price_drop_to_threshold(row.liquidation_price, row.btc_price) for row in acc_rows
-    ]
-    inc_drop_values = [
-        price_drop_to_threshold(row.liquidation_price, row.btc_price) for row in inc_rows
-    ]
     metrics = [
         ("Accumulation risk path", None, None),
-        ("Accumulation max effective LTV", max(row.effective_ltv for row in acc_rows), PCT_FMT),
-        ("Accumulation min drop-to-liquidation", min(acc_drop_values), PCT_FMT),
-        ("Accumulation first non-safe year", next((row.year for row in acc_rows if row.warning), "None"), None),
-        ("Accumulation liquidation year", next((row.year for row in acc_rows if row.warning == "LIQUIDATED"), "None"), None),
-        ("Accumulation total interest accrued", sum(row.interest_usd for row in acc_rows), USD_FMT),
-        ("Accumulation total new borrowing", sum(row.borrowed_usd for row in acc_rows), USD_FMT),
-        ("Accumulation ending net BTC", acc_rows[-1].net_btc_after_debt, BTC_FMT),
-        ("Accumulation BTC outperformance vs passive", acc_rows[-1].net_btc_after_debt - passive_btc, BTC_FMT),
+        ("Accumulation max effective LTV", "=MAX('Accumulation Engine'!Q4:Q14)", PCT_FMT),
+        ("Accumulation min drop-to-liquidation", "=MIN('Accumulation Engine'!U4:U14)", PCT_FMT),
+        ("Accumulation first non-safe year", '=IF(COUNTIF(\'Accumulation Engine\'!$V$4:$V$14,"<>SAFE")=0,"None",INDEX(\'Accumulation Engine\'!$A$4:$A$14,AGGREGATE(15,6,(ROW(\'Accumulation Engine\'!$V$4:$V$14)-ROW(\'Accumulation Engine\'!$V$4)+1)/(\'Accumulation Engine\'!$V$4:$V$14<>"SAFE"),1)))', None),
+        ("Accumulation liquidation year", '=IFERROR(INDEX(\'Accumulation Engine\'!$A$4:$A$14,MATCH("LIQUIDATED",\'Accumulation Engine\'!$V$4:$V$14,0)),"None")', None),
+        ("Accumulation total interest accrued", "=SUM('Accumulation Engine'!E4:E14)", USD_FMT),
+        ("Accumulation total new borrowing", "=SUM('Accumulation Engine'!H4:H14)", USD_FMT),
+        ("Accumulation ending net BTC", "='Accumulation Engine'!N14", BTC_FMT),
+        ("Accumulation BTC outperformance vs passive", "='Accumulation Engine'!N14-'Inputs'!$B$7", BTC_FMT),
         ("Income risk path", None, None),
-        ("Income max effective LTV", max(row.effective_ltv for row in inc_rows), PCT_FMT),
-        ("Income min drop-to-liquidation", min(inc_drop_values), PCT_FMT),
-        ("Income first constrained year", next((row.year for row in inc_rows if row.warning == "CONSTRAINED"), "None"), None),
-        ("Income liquidation year", next((row.year for row in inc_rows if row.warning == "LIQUIDATED"), "None"), None),
-        ("Income total interest accrued", sum(row.interest_usd for row in inc_rows), USD_FMT),
-        ("Income total funded", sum(row.income_borrowed_usd for row in inc_rows), USD_FMT),
-        ("Income total shortfall", sum(row.income_shortfall_usd for row in inc_rows), USD_FMT),
+        ("Income max effective LTV", "=MAX('Income Engine'!P4:P14)", PCT_FMT),
+        ("Income min drop-to-liquidation", "=MIN('Income Engine'!S4:S14)", PCT_FMT),
+        ("Income first constrained year", '=IFERROR(INDEX(\'Income Engine\'!$A$4:$A$14,MATCH("CONSTRAINED",\'Income Engine\'!$T$4:$T$14,0)),"None")', None),
+        ("Income liquidation year", '=IFERROR(INDEX(\'Income Engine\'!$A$4:$A$14,MATCH("LIQUIDATED",\'Income Engine\'!$T$4:$T$14,0)),"None")', None),
+        ("Income total interest accrued", "=SUM('Income Engine'!E4:E14)", USD_FMT),
+        ("Income total funded", "=SUM('Income Engine'!I4:I14)", USD_FMT),
+        ("Income total shortfall", "=SUM('Income Engine'!J4:J14)", USD_FMT),
         ("Passive hold comparison", None, None),
-        ("Passive BTC held", passive_btc, BTC_FMT),
-        ("Passive ending value", passive_btc * projection.price_points[-1].btc_price, USD_FMT),
+        ("Passive BTC held", "='Inputs'!$B$7", BTC_FMT),
+        ("Passive ending value", "='Inputs'!$B$7*'Price Projection'!B14", USD_FMT),
     ]
     _headers(ws, 3, ["Metric", "Value"])
     for idx, (name, value, fmt) in enumerate(metrics, start=4):
@@ -285,26 +269,22 @@ def _write_risk_alerts(wb: Workbook, projection: V2ProjectionResult) -> None:
 def _write_summary(wb: Workbook, projection: V2ProjectionResult) -> None:
     ws = wb.create_sheet("Summary")
     _title(ws, "BTC-Backed Loan Model v2 Summary")
-    acc0 = projection.accumulation_rows[0]
-    acc_end = projection.accumulation_rows[-1]
-    inc_rows = projection.income_rows
-    inc_end = inc_rows[-1]
     summary = [
-        ("Passive starting BTC", 2.0, BTC_FMT),
-        ("Passive ending BTC", 2.0, BTC_FMT),
-        ("Passive ending value", 2.0 * projection.price_points[-1].btc_price, USD_FMT),
-        ("Accumulation setup gross BTC", acc0.collateral_btc, BTC_FMT),
-        ("Accumulation ending gross BTC", acc_end.collateral_btc, BTC_FMT),
-        ("Accumulation ending debt", acc_end.debt_usd, USD_FMT),
-        ("Accumulation ending net BTC", acc_end.net_btc_after_debt, BTC_FMT),
-        ("Accumulation ending LTV", acc_end.effective_ltv, PCT_FMT),
-        ("Accumulation status", acc_end.warning or "SAFE", None),
-        ("Income selected draw year 1", 50_000.0, USD_FMT),
-        ("Income funded year 1", inc_rows[1].income_borrowed_usd, USD_FMT),
-        ("Income shortfall year 1", inc_rows[1].income_shortfall_usd, USD_FMT),
-        ("Income ending debt", inc_end.debt_usd, USD_FMT),
-        ("Income ending net BTC", inc_end.net_btc_after_debt, BTC_FMT),
-        ("Income status", inc_end.warning, None),
+        ("Passive starting BTC", "='Inputs'!$B$7", BTC_FMT),
+        ("Passive ending BTC", "='Inputs'!$B$7", BTC_FMT),
+        ("Passive ending value", "='Inputs'!$B$7*'Price Projection'!B14", USD_FMT),
+        ("Accumulation setup gross BTC", "='Accumulation Engine'!J4", BTC_FMT),
+        ("Accumulation ending gross BTC", "='Accumulation Engine'!J14", BTC_FMT),
+        ("Accumulation ending debt", "='Accumulation Engine'!K14", USD_FMT),
+        ("Accumulation ending net BTC", "='Accumulation Engine'!N14", BTC_FMT),
+        ("Accumulation ending LTV", "='Accumulation Engine'!Q14", PCT_FMT),
+        ("Accumulation status", "='Accumulation Engine'!V14", None),
+        ("Income selected draw year 1", "='Inputs'!$B$19", USD_FMT),
+        ("Income funded year 1", "='Income Engine'!I5", USD_FMT),
+        ("Income shortfall year 1", "='Income Engine'!J5", USD_FMT),
+        ("Income ending debt", "='Income Engine'!L14", USD_FMT),
+        ("Income ending net BTC", "='Income Engine'!N14", BTC_FMT),
+        ("Income status", "='Income Engine'!T14", None),
     ]
     _headers(ws, 3, ["Metric", "Value"])
     for idx, (name, value, fmt) in enumerate(summary, start=4):
@@ -397,6 +377,9 @@ def build_workbook_v2(output_path: str | Path = "btc_leveraged_model_v2.xlsx") -
     _write_risk_alerts(wb, projection)
     _write_summary(wb, projection)
     _write_audit_examples(wb, projection)
+    wb.calculation.calcMode = "auto"
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
     return output_path

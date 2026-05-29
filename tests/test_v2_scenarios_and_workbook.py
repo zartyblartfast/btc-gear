@@ -51,6 +51,9 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     build_workbook_v2(output_path)
 
     wb = load_workbook(output_path, data_only=False)
+    assert wb.calculation.calcMode == "auto"
+    assert wb.calculation.fullCalcOnLoad is True
+    assert wb.calculation.forceFullCalc is True
     assert wb.sheetnames == [
         "Inputs",
         "Price Projection",
@@ -63,10 +66,10 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
 
     summary = wb["Summary"]
     assert summary["A1"].value == "BTC-Backed Loan Model v2 Summary"
-    assert summary["B4"].value == pytest.approx(2.0)
-    assert summary["B7"].value == pytest.approx(2.6666666667)
-    assert summary["B14"].value == pytest.approx(42_000.0)
-    assert summary["B15"].value == pytest.approx(8_000.0)
+    assert summary["B4"].value == "='Inputs'!$B$7"
+    assert summary["B7"].value == "='Accumulation Engine'!J4"
+    assert summary["B14"].value == "='Income Engine'!I5"
+    assert summary["B15"].value == "='Income Engine'!J5"
     assert summary["A13"].value == "Income selected draw year 1"
     assert summary["A14"].value == "Income funded year 1"
 
@@ -107,13 +110,14 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert accumulation["S3"].value == "Margin-Call Price"
     assert accumulation["U3"].value == "Drop to Liquidation"
     assert accumulation["V3"].value == "Risk Status"
-    assert accumulation["C4"].value == pytest.approx(2.0)
-    assert accumulation["J4"].value == pytest.approx(2.6666666667)
-    assert accumulation["D5"].value == pytest.approx(40_000.0)
-    assert accumulation["F5"].value == pytest.approx(44_000.0)
-    assert accumulation["G5"].value == pytest.approx(0.275)
-    assert accumulation["L5"].value == pytest.approx(2.6666666667)
-    assert accumulation["R5"].value == pytest.approx(1.3333333333)
+    assert accumulation["C4"].value == "='Inputs'!$B$7"
+    assert accumulation["J4"].value == "=C4+I4"
+    assert accumulation["D5"].value == "=K4"
+    assert accumulation["E5"].value == "=D5*'Inputs'!$B$8"
+    assert accumulation["F5"].value == '=IF(\'Inputs\'!$B$9="capitalized",D5+E5,D5)'
+    assert accumulation["G5"].value == "=IF(C5*B5=0,0,F5/(C5*B5))"
+    assert accumulation["Q5"].value == "=IF(J5*B5=0,0,K5/(J5*B5))"
+    assert accumulation["R5"].value == "=L5/'Inputs'!$B$7"
 
     income = wb["Income Engine"]
     assert income["D3"].value == "Starting Debt"
@@ -128,10 +132,11 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert income["Q3"].value == "Margin-Call Price"
     assert income["S3"].value == "Drop to Liquidation"
     assert income["T3"].value == "Sustainability Status"
-    assert income["D5"].value == 0
-    assert income["G5"].value == pytest.approx(50_000.0)
-    assert income["H5"].value == pytest.approx(42_000.0)
-    assert income["K5"].value == pytest.approx(42_000.0)
+    assert income["D5"].value == "=L4"
+    assert income["G5"].value == "='Inputs'!$B$19"
+    assert income["H5"].value == "=MAX(0,MIN(C5*B5*'Inputs'!$B$20,C5*B5*'Inputs'!$B$11*(1-'Inputs'!$B$12))-F5)"
+    assert income["K5"].value == "=K4+I5"
+    assert income["T5"].value.startswith("=IF(")
 
     risk = wb["Risk Alerts"]
     risk_metrics = [risk.cell(row=row, column=1).value for row in range(4, 20)]
@@ -141,6 +146,12 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert "Income min drop-to-liquidation" in risk_metrics
     assert "Income liquidation year" in risk_metrics
     assert "Income total interest accrued" in risk_metrics
+    assert risk["B5"].value == "=MAX('Accumulation Engine'!Q4:Q14)"
+    assert risk["B9"].value == "=SUM('Accumulation Engine'!E4:E14)"
+    assert risk["B14"].value == "=MAX('Income Engine'!P4:P14)"
+
+    assert summary["B6"].value == "='Inputs'!$B$7*'Price Projection'!B14"
+    assert summary["B13"].value == "='Inputs'!$B$19"
 
     audit = wb["Audit Examples"]
     assert audit["B6"].value == pytest.approx(2.6666666667)
