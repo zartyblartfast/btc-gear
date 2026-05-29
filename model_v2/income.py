@@ -35,7 +35,7 @@ def _validate_config(config: IncomeConfig) -> None:
         raise ValueError("borrow_apr must be non-negative")
     _validate_positive(config.starting_btc, "starting_btc")
     _validate_positive(config.current_btc_price, "current_btc_price")
-    _validate_non_negative(config.annual_income_target, "annual_income_target")
+    _validate_non_negative(config.selected_annual_income_draw, "selected_annual_income_draw")
     _validate_ltv(config.income_ltv_ceiling, "income_ltv_ceiling")
     _validate_ltv(config.risk_thresholds.margin_call_ltv, "margin_call_ltv")
     _validate_ltv(config.risk_thresholds.liquidation_ltv, "liquidation_ltv")
@@ -119,15 +119,15 @@ def _income_status(
     ltv: float,
     liq_price: float,
     btc_price: float,
-    requested_income: float,
+    selected_income_draw: float,
     income_borrowed: float,
 ) -> str:
     risk = _risk_status(config, ltv, liq_price, btc_price)
     if risk is not None:
         return risk
-    if requested_income > 0 and income_borrowed == 0:
+    if selected_income_draw > 0 and income_borrowed == 0:
         return "FAILED"
-    if income_borrowed < requested_income:
+    if income_borrowed < selected_income_draw:
         return "CONSTRAINED"
     return "SAFE"
 
@@ -152,7 +152,7 @@ def income_year(
     config: IncomeConfig,
     prior_row: IncomeRow,
     price_point: PricePoint,
-    requested_income: float | None = None,
+    selected_income_draw: float | None = None,
 ) -> IncomeRow:
     """Return one annual borrow-funded income row.
 
@@ -164,8 +164,12 @@ def income_year(
     _validate_positive(price_point.btc_price, "btc_price")
     _validate_positive(prior_row.collateral_btc, "prior collateral_btc")
 
-    requested = config.annual_income_target if requested_income is None else requested_income
-    _validate_non_negative(requested, "requested_income")
+    selected_draw = (
+        config.selected_annual_income_draw
+        if selected_income_draw is None
+        else selected_income_draw
+    )
+    _validate_non_negative(selected_draw, "selected_income_draw")
 
     debt_after_interest, interest = _interest_adjusted_debt(config, prior_row.debt_usd)
     collateral_value = prior_row.collateral_btc * price_point.btc_price
@@ -188,9 +192,9 @@ def income_year(
 
     income_borrowed = 0.0
     if pre_risk not in {"LIQUIDATED", "MARGIN CALL"}:
-        income_borrowed = min(requested, available_capacity)
+        income_borrowed = min(selected_draw, available_capacity)
 
-    shortfall = requested - income_borrowed
+    shortfall = selected_draw - income_borrowed
     debt_end = debt_after_interest + income_borrowed
 
     end_ltv = effective_ltv(debt_end, prior_row.collateral_btc, price_point.btc_price)
@@ -204,7 +208,7 @@ def income_year(
         ltv=end_ltv,
         liq_price=end_liq_price,
         btc_price=price_point.btc_price,
-        requested_income=requested,
+        selected_income_draw=selected_draw,
         income_borrowed=income_borrowed,
     )
 

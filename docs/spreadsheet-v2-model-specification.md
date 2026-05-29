@@ -148,7 +148,8 @@ Recommended Inputs tab sections:
 | Input | Default | Notes |
 |---|---:|---|
 | Income strategy | Borrow Income | Borrow Income / Borrow Capacity % / Hybrid later |
-| Annual income target | 50000 | USD/stablecoin nominal |
+| Max available annual income | calculated | USD/stablecoin capacity from BTC collateral, LTV ceiling, existing debt, interest, and liquidation buffer |
+| Selected annual income draw | 50000 | User-selected USD/stablecoin draw; capped by max available annual income |
 | Income start year | 1 | First year to borrow income |
 | Income LTV ceiling | 0.35 | Post-income max LTV |
 | Minimum liquidation buffer | 0.50 | Required drop-to-liquidation buffer |
@@ -343,7 +344,8 @@ Required columns:
 
 The Income Engine models spendable income funded by borrowing stablecoins against BTC collateral. It answers:
 
-- How much requested income can be funded?
+- How much income capacity does the BTC collateral support?
+- How much of the user's selected draw can be funded?
 - How does debt grow?
 - How much liquidation buffer remains?
 - When does the income plan become constrained or unsafe?
@@ -354,10 +356,11 @@ Default income behavior:
 
 - Keep BTC collateral constant.
 - Accrue interest.
-- Borrow the annual income target if capacity allows.
+- Calculate max available annual income from collateral, safe LTV, existing debt, and liquidation buffer.
+- Borrow the selected annual income draw if capacity allows.
 - Do not buy BTC.
 - Do not sell BTC.
-- Show shortfall if requested income exceeds safe capacity.
+- Show shortfall if selected income draw exceeds safe capacity.
 
 ### 7.3 Annual lifecycle
 
@@ -381,12 +384,13 @@ max_safe_debt = min(ltv_limit_debt, buffer_limit_debt)
 available_capacity = max(0, max_safe_debt - debt_after_interest)
 ```
 
-7. Compute requested income.
+7. Present max available annual income and read the selected income draw.
 8. Borrow income:
 
 ```text
-income_borrowed = min(requested_income, available_capacity)
-unfunded_income = requested_income - income_borrowed
+max_available_annual_income = available_capacity
+income_borrowed = min(selected_income_draw, max_available_annual_income)
+unfunded_income = selected_income_draw - income_borrowed
 debt_end = debt_after_interest + income_borrowed
 ```
 
@@ -400,8 +404,8 @@ Suggested flags, in precedence order:
 1. LIQUIDATED: LTV >= liquidation threshold.
 2. MARGIN CALL: LTV >= margin call threshold.
 3. WARNING: LTV >= warning LTV or drop-to-liquidation is below the minimum liquidation buffer.
-4. CONSTRAINED: requested income is only partially funded.
-5. FAILED: no requested income can be funded for the year.
+4. CONSTRAINED: selected income draw is only partially funded.
+5. FAILED: none of the selected income draw can be funded for the year.
 6. SAFE: full income funded and risk thresholds are satisfied.
 
 If multiple conditions are true, report the highest-precedence status. For example, a year can be both constrained and in warning territory; display WARNING and retain unfunded income as a numeric output.
@@ -416,8 +420,8 @@ Required columns:
 - Starting debt
 - Interest accrued
 - Debt after interest
-- Requested income
-- Available borrowing capacity
+- Selected income draw
+- Max available annual income
 - Income borrowed
 - Unfunded income
 - Cumulative income borrowed
@@ -534,7 +538,8 @@ Input:
 - BTC price = $100,000
 - Existing debt = $30,000
 - Income LTV ceiling = 35%
-- Requested income = $50,000
+- Max available annual income = $40,000
+- Selected income draw = $50,000
 
 Expected:
 

@@ -99,7 +99,7 @@ class IncomeConfig:
 
     starting_btc: float
     current_btc_price: float
-    annual_income_target: float
+    selected_annual_income_draw: float
     borrow_terms: BorrowTerms
     risk_thresholds: RiskThresholds
     strategy: IncomeStrategy = IncomeStrategy.BORROW_INCOME

@@ -75,6 +75,15 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
     inc = projection.income_rows[0]
     cfg = default_v2_inputs().accumulation_config
     income_cfg = default_v2_inputs().income_config
+    year1_income_capacity = (
+        income_cfg.starting_btc
+        * income_cfg.current_btc_price
+        * min(
+            income_cfg.income_ltv_ceiling,
+            income_cfg.risk_thresholds.liquidation_ltv
+            * (1 - income_cfg.risk_thresholds.minimum_liquidation_buffer),
+        )
+    )
 
     rows = [
         ("Shared", None, None, None),
@@ -90,7 +99,8 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
         ("Max Effective LTV", cfg.max_effective_ltv, "%", "Hard cap"),
         ("Setup Collateral BTC", acc.collateral_btc, "BTC", "Computed audit output"),
         ("Income", None, None, None),
-        ("Annual Income Target", income_cfg.annual_income_target, "USD", "Borrow-funded income target"),
+        ("Max Available Annual Income (Year 1)", year1_income_capacity, "USD", "Calculated from BTC collateral, LTV ceiling, and liquidation buffer"),
+        ("Selected Annual Income Draw", income_cfg.selected_annual_income_draw, "USD", "User-selected draw; capped by max available annual income"),
         ("Income LTV Ceiling", income_cfg.income_ltv_ceiling, "%", "Safe debt ceiling"),
         ("Setup Collateral BTC", inc.collateral_btc, "BTC", "Income keeps BTC constant"),
     ]
@@ -172,8 +182,8 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
     _title(ws, "Income Engine — Borrow-Funded Income")
     headers = [
         "Year", "BTC Price", "Starting Collateral BTC", "Starting Debt",
-        "Interest Accrued", "Debt After Interest", "Requested Income",
-        "Available Borrowing Capacity", "Income Borrowed", "Unfunded Income",
+        "Interest Accrued", "Debt After Interest", "Selected Income Draw",
+        "Max Available Annual Income", "Income Borrowed", "Unfunded Income",
         "Cumulative Income Borrowed", "Ending Debt", "Debt BTC Equivalent",
         "Net BTC After Debt", "Net Equity USD", "Effective LTV End",
         "Margin-Call Price", "Liquidation Price", "Drop to Liquidation",
@@ -182,13 +192,13 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
     _headers(ws, 3, headers)
     prior = None
     cumulative_income = 0.0
-    requested_income = default_v2_inputs().income_config.annual_income_target
+    selected_income_draw = default_v2_inputs().income_config.selected_annual_income_draw
     income_ltv_ceiling = default_v2_inputs().income_config.income_ltv_ceiling
     thresholds = default_v2_inputs().income_config.risk_thresholds
     for row_idx, row in enumerate(projection.income_rows, start=4):
         starting_debt = 0.0 if prior is None else prior.debt_usd
         debt_after_interest = starting_debt + row.interest_usd
-        requested = 0.0 if row.year == 0 else requested_income
+        selected_draw = 0.0 if row.year == 0 else selected_income_draw
         ltv_limit_debt = row.collateral_btc * row.btc_price * income_ltv_ceiling
         buffer_limit_debt = (
             row.collateral_btc
@@ -203,7 +213,7 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
         drop_to_liquidation = price_drop_to_threshold(row.liquidation_price, row.btc_price)
         values = [
             row.year, row.btc_price, row.collateral_btc, starting_debt,
-            row.interest_usd, debt_after_interest, requested, available_capacity,
+            row.interest_usd, debt_after_interest, selected_draw, available_capacity,
             row.income_borrowed_usd, row.income_shortfall_usd, cumulative_income,
             row.debt_usd, row.debt_btc_equivalent, row.net_btc_after_debt,
             net_equity_usd, row.effective_ltv, row.margin_call_price,
@@ -285,7 +295,7 @@ def _write_summary(wb: Workbook, projection: V2ProjectionResult) -> None:
         ("Accumulation ending net BTC", acc_end.net_btc_after_debt, BTC_FMT),
         ("Accumulation ending LTV", acc_end.effective_ltv, PCT_FMT),
         ("Accumulation status", acc_end.warning or "SAFE", None),
-        ("Income requested year 1", 50_000.0, USD_FMT),
+        ("Income selected draw year 1", 50_000.0, USD_FMT),
         ("Income funded year 1", inc_rows[1].income_borrowed_usd, USD_FMT),
         ("Income shortfall year 1", inc_rows[1].income_shortfall_usd, USD_FMT),
         ("Income ending debt", inc_end.debt_usd, USD_FMT),
@@ -313,7 +323,7 @@ def _write_audit_examples(wb: Workbook, projection: V2ProjectionResult) -> None:
     income_capacity_cfg = IncomeConfig(
         starting_btc=2.0,
         current_btc_price=100_000.0,
-        annual_income_target=50_000.0,
+        selected_annual_income_draw=50_000.0,
         income_ltv_ceiling=0.35,
         borrow_terms=BorrowTerms(borrow_apr=0.0),
         risk_thresholds=risk,

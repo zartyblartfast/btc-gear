@@ -66,6 +66,14 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert summary["B7"].value == pytest.approx(2.6666666667)
     assert summary["B14"].value == pytest.approx(42_000.0)
     assert summary["B15"].value == pytest.approx(8_000.0)
+    assert summary["A13"].value == "Income selected draw year 1"
+    assert summary["A14"].value == "Income funded year 1"
+
+    inputs = wb["Inputs"]
+    input_labels = [inputs.cell(row=row, column=1).value for row in range(4, 22)]
+    assert "Selected Annual Income Draw" in input_labels
+    assert "Max Available Annual Income (Year 1)" in input_labels
+    assert "Annual Income Target" not in input_labels
 
     accumulation = wb["Accumulation Engine"]
     assert accumulation["A3"].value == "Year"
@@ -96,8 +104,8 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert income["D3"].value == "Starting Debt"
     assert income["E3"].value == "Interest Accrued"
     assert income["F3"].value == "Debt After Interest"
-    assert income["G3"].value == "Requested Income"
-    assert income["H3"].value == "Available Borrowing Capacity"
+    assert income["G3"].value == "Selected Income Draw"
+    assert income["H3"].value == "Max Available Annual Income"
     assert income["J3"].value == "Unfunded Income"
     assert income["K3"].value == "Cumulative Income Borrowed"
     assert income["N3"].value == "Net BTC After Debt"
