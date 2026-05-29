@@ -63,6 +63,9 @@ uv run --with openpyxl python3 scripts/build_spreadsheet.py --output btc_leverag
 `Max Available Annual Income (Year 1)` and `Selected Annual Income Draw`, not
 the legacy `Annual Income Target` label.
 
+The default price path is a flat base case. Edit `Current BTC Price` and
+`Annual BTC Price Growth` on the Inputs tab to drive the Price Projection tab.
+
 ## Reference
 
 Default borrowing parameters are calibrated to [Ledn](https://www.ledn.io/) — a Bitcoin-backed lending platform with over $10B in loan originations since 2018.

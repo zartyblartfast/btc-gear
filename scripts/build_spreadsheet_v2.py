@@ -88,8 +88,9 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
 
     rows = [
         ("Shared", None, None, None),
+        ("Current BTC Price", cfg.current_btc_price, "USD", "Year 0 price; feeds Price Projection"),
+        ("Annual BTC Price Growth", 0.0, "%", "Editable flat/default projection growth rate"),
         ("Starting BTC", cfg.starting_btc, "BTC", "Collateral used by both engines"),
-        ("Current BTC Price", cfg.current_btc_price, "USD", "Year 0 price"),
         ("Borrow APR", cfg.borrow_terms.borrow_apr, "%", "Interest accrues on start-of-row debt"),
         ("Interest Treatment", str(cfg.borrow_terms.interest_treatment), "choice", "capitalized or paid externally"),
         ("Margin Call LTV", cfg.risk_thresholds.margin_call_ltv, "%", "Risk threshold"),
@@ -126,9 +127,11 @@ def _write_price_projection(wb: Workbook, projection: V2ProjectionResult) -> Non
     _headers(ws, 3, ["Year", "BTC Price", "Scenario", "YoY Change"])
     for row_idx, point in enumerate(projection.price_points, start=4):
         _cell(ws, row_idx, 1, point.year)
-        _cell(ws, row_idx, 2, point.btc_price, fmt=USD_FMT)
-        _cell(ws, row_idx, 3, point.scenario)
-        _cell(ws, row_idx, 4, point.yoy_change, fmt=PCT_FMT)
+        price_formula = "='Inputs'!$B$5" if point.year == 0 else f"=B{row_idx - 1}*(1+'Inputs'!$B$6)"
+        yoy_formula = 0 if point.year == 0 else f"=B{row_idx}/B{row_idx - 1}-1"
+        _cell(ws, row_idx, 2, price_formula, fmt=USD_FMT)
+        _cell(ws, row_idx, 3, "Editable formula projection")
+        _cell(ws, row_idx, 4, yoy_formula, fmt=PCT_FMT)
     _autosize(ws)
 
 
@@ -156,7 +159,7 @@ def _write_accumulation(wb: Workbook, projection: V2ProjectionResult) -> None:
         drop_to_liquidation = price_drop_to_threshold(row.liquidation_price, row.btc_price)
         leverage_multiple = row.total_btc / passive_btc
         values = [
-            row.year, row.btc_price, starting_collateral, starting_debt,
+            row.year, f"='Price Projection'!B{row_idx}", starting_collateral, starting_debt,
             row.interest_usd, debt_after_interest, pre_action_ltv, row.borrowed_usd,
             row.btc_purchased, row.collateral_btc, row.debt_usd, row.total_btc,
             row.debt_btc_equivalent, row.net_btc_after_debt,
@@ -213,7 +216,7 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
         net_equity_usd = row.collateral_btc * row.btc_price - row.debt_usd
         drop_to_liquidation = price_drop_to_threshold(row.liquidation_price, row.btc_price)
         values = [
-            row.year, row.btc_price, row.collateral_btc, starting_debt,
+            row.year, f"='Price Projection'!B{row_idx}", row.collateral_btc, starting_debt,
             row.interest_usd, debt_after_interest, selected_draw, available_capacity,
             row.income_borrowed_usd, row.income_shortfall_usd, cumulative_income,
             row.debt_usd, row.debt_btc_equivalent, row.net_btc_after_debt,

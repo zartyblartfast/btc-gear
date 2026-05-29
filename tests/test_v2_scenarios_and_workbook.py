@@ -72,12 +72,26 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
 
     inputs = wb["Inputs"]
     input_labels = [inputs.cell(row=row, column=1).value for row in range(4, 22)]
+    assert "Annual BTC Price Growth" in input_labels
     assert "Selected Annual Income Draw" in input_labels
     assert "Max Available Annual Income (Year 1)" in input_labels
     assert "Annual Income Target" not in input_labels
 
+    price_projection = wb["Price Projection"]
+    assert price_projection["B4"].value == "='Inputs'!$B$5"
+    assert price_projection["B5"].value == "=B4*(1+'Inputs'!$B$6)"
+    assert price_projection["D4"].value == 0
+    assert price_projection["D5"].value == "=B5/B4-1"
+
+    assert inputs["A5"].value == "Current BTC Price"
+    assert inputs["A6"].value == "Annual BTC Price Growth"
+    assert inputs["B5"].value == pytest.approx(60_000.0)
+    assert inputs["B6"].value == 0
+
     accumulation = wb["Accumulation Engine"]
     assert accumulation["A3"].value == "Year"
+    assert accumulation["B4"].value == "='Price Projection'!B4"
+    assert accumulation["B5"].value == "='Price Projection'!B5"
     assert accumulation["C3"].value == "Starting Collateral BTC"
     assert accumulation["D3"].value == "Starting Debt"
     assert accumulation["E3"].value == "Interest Accrued"
