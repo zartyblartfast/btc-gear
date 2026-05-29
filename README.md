@@ -8,8 +8,12 @@ Bitcoin leveraged accumulation and retirement income projector. Borrow against B
 
 ## Documentation
 
-- [Web App Specification](docs/webapp-specification.md) — architecture, components, data flow, testing strategy
-- [Spreadsheet Specification](docs/spreadsheet-specification.md) — the reference model implemented in Excel/Sheets
+- [Web App Product & Strategy Spec](docs/web-app/product-strategy-spec.md) — goals, user personas, strategy spectrum, pages, deployment stance
+- [Web App Engine & Strategy Spec](docs/web-app/engine-and-strategy-spec.md) — canonical lifecycle, risk formulas, strategy rules
+- [Review, Local-First Data & Dashboard Spec](docs/web-app/review-local-first-and-dashboard-spec.md) — review/rebaseline flow, profile export/import, dashboard charts
+- [Web App Test Strategy](docs/web-app/test-strategy.md) — honest test layers, strategy concept tests, golden fixtures
+- [Web App MVP Implementation Plan](docs/plans/web-app-mvp-implementation.md) — staged AI-coding plan
+- [Spreadsheet v2 Model Spec](docs/spreadsheet-v2-model-specification.md) — formula-native workbook/reference model
 
 ## Architecture
 
