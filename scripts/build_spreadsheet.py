@@ -192,10 +192,9 @@ CHART_ROWS = N + 1  # header + data rows for chart ranges
 
 for t in range(N):
     r = t + 2  # data starts row 2
-    yr = 2025 + t
 
     cell(ws2, r, 1, t)
-    cell(ws2, r, 2, yr)
+    cell(ws2, r, 2, f'={START_YEAR}+A{r}')
 
     # ---- Pessimistic ----
     # CAGR1 = (Anchor/CurrentPrice)^(1/5) - 1  (expression only, no leading =)
@@ -274,8 +273,7 @@ hdr(ws3, 1, len(cols3))
 
 for t in range(N):
     r = t + 2
-    yr = 2025 + t
-    cell(ws3, r, 1, yr)
+    cell(ws3, r, 1, f'={START_YEAR}+{t}')
 
     # BTC price = from Tab2 col H (median price)
     cell(ws3, r, 2, f"='Price Projection'!H{r}", fmt='$#,##0')
@@ -403,8 +401,7 @@ hdr(ws4, 1, len(cols4))
 
 for t in range(N):
     r = t + 2
-    yr = 2025 + t
-    cell(ws4, r, 1, yr)
+    cell(ws4, r, 1, f'={START_YEAR}+{t}')
     cell(ws4, r, 2, f"='Leveraged Position'!V{r}", fmt='$#,##0')
     cell(ws4, r, 3, f"='Leveraged Position'!W{r}", fmt='$#,##0')
     cell(ws4, r, 4, f"='Leveraged Position'!X{r}", fmt='$#,##0')
