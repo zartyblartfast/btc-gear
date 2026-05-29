@@ -36,9 +36,15 @@ VALUE_FONT = Font(name="Calibri", size=11, bold=True)
 USD_FMT = '$#,##0.00'
 BTC_FMT = '0.00000000'
 PCT_FMT = '0.00%'
+MAX_PROJECTION_YEARS = 30
+FIRST_MODEL_ROW = 4
+LAST_MODEL_ROW = FIRST_MODEL_ROW + MAX_PROJECTION_YEARS
+
 
 
 def _cell(ws, row: int, col: int, value=None, *, fmt: str | None = None, font=None, fill=None, align="center"):
+    if isinstance(value, str) and value.startswith("="):
+        value = value.replace("\\'", "'")
     cell = ws.cell(row=row, column=col, value=value)
     cell.border = THIN
     cell.alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
@@ -59,6 +65,23 @@ def _title(ws, text: str) -> None:
 def _headers(ws, row: int, headers: list[str]) -> None:
     for idx, header in enumerate(headers, start=1):
         _cell(ws, row, idx, header, font=HEADER_FONT, fill=HEADER_FILL)
+
+
+def _active_formula(row_idx: int, value):
+    """Return a formula/value blanked out when the row is beyond Projection Years."""
+
+    if isinstance(value, str) and value.startswith("="):
+        return f'=IF($A{row_idx}="","",{value[1:]})'
+    if isinstance(value, int | float):
+        return f'=IF($A{row_idx}="","",{value})'
+    return value
+
+
+def _lookup_last(sheet: str, column: str) -> str:
+    return (
+        f"=LOOKUP(2,1/('{sheet}'!$A${FIRST_MODEL_ROW}:$A${LAST_MODEL_ROW}<>\"\"),"
+        f"'{sheet}'!${column}${FIRST_MODEL_ROW}:${column}${LAST_MODEL_ROW})"
+    )
 
 
 def _autosize(ws) -> None:
@@ -96,6 +119,9 @@ def _write_inputs(wb: Workbook, projection: V2ProjectionResult) -> None:
         ("Setup Collateral BTC", "=$B$7", "BTC", "Income keeps BTC constant"),
         ("Advanced Risk", None, None, None),
         ("Warning LTV", cfg.risk_thresholds.warning_ltv, "%", "Status changes to WARNING at or above this LTV"),
+        ("Projection Controls", None, None, None),
+        ("Projection Years", 10, "years", "Editable duration; 10 means Start Year through Start Year + 10"),
+        ("Start Year", 2026, "year", "First displayed projection year"),
     ]
     _headers(ws, 3, ["Input", "Value", "Unit", "Notes"])
     for idx, row in enumerate(rows, start=4):
@@ -116,12 +142,23 @@ def _write_price_projection(wb: Workbook, projection: V2ProjectionResult) -> Non
     ws = wb.create_sheet("Price Projection")
     _title(ws, "Price Projection")
     _headers(ws, 3, ["Year", "BTC Price", "Scenario", "YoY Change"])
-    for row_idx, point in enumerate(projection.price_points, start=4):
-        _cell(ws, row_idx, 1, point.year)
-        price_formula = "='Inputs'!$B$5" if point.year == 0 else f"=B{row_idx - 1}*(1+'Inputs'!$B$6)"
-        yoy_formula = 0 if point.year == 0 else f"=B{row_idx}/B{row_idx - 1}-1"
+    for row_idx, point in enumerate(projection.price_points, start=FIRST_MODEL_ROW):
+        offset = row_idx - FIRST_MODEL_ROW
+        year_formula = f'=IF({offset}<=\'Inputs\'!$B$25,\'Inputs\'!$B$26+{offset},"")'
+        price_formula = (
+            f'=IF($A{row_idx}="", "", \'Inputs\'!$B$5)'
+            if offset == 0
+            else f'=IF($A{row_idx}="","",B{row_idx - 1}*(1+\'Inputs\'!$B$6))'
+        )
+        yoy_formula = (
+            f'=IF($A{row_idx}="","",0)'
+            if offset == 0
+            else f'=IF($A{row_idx}="","",B{row_idx}/B{row_idx - 1}-1)'
+        )
+        scenario = f'=IF($A{row_idx}="","","Editable formula projection")'
+        _cell(ws, row_idx, 1, year_formula)
         _cell(ws, row_idx, 2, price_formula, fmt=USD_FMT)
-        _cell(ws, row_idx, 3, "Editable formula projection")
+        _cell(ws, row_idx, 3, scenario)
         _cell(ws, row_idx, 4, yoy_formula, fmt=PCT_FMT)
     _autosize(ws)
 
@@ -158,7 +195,7 @@ def _write_accumulation(wb: Workbook, projection: V2ProjectionResult) -> None:
                 f"MAX(0,({borrow_ltv}*C{row_idx}*B{row_idx}-F{row_idx})/(1-{borrow_ltv})))"
             )
         values = [
-            row.year, f"='Price Projection'!B{row_idx}", starting_collateral, starting_debt,
+            f"='Price Projection'!A{row_idx}", f"='Price Projection'!B{row_idx}", starting_collateral, starting_debt,
             interest, debt_after_interest, f"=IF(C{row_idx}*B{row_idx}=0,0,F{row_idx}/(C{row_idx}*B{row_idx}))", new_borrowing,
             f"=H{row_idx}/B{row_idx}", f"=C{row_idx}+I{row_idx}", f"=F{row_idx}+H{row_idx}", f"=J{row_idx}",
             f"=K{row_idx}/B{row_idx}", f"=L{row_idx}-M{row_idx}",
@@ -176,6 +213,8 @@ def _write_accumulation(wb: Workbook, projection: V2ProjectionResult) -> None:
             PCT_FMT, None,
         ]
         for col, (value, fmt) in enumerate(zip(values, formats, strict=True), start=1):
+            if col > 1:
+                value = _active_formula(row_idx, value)
             _cell(ws, row_idx, col, value, fmt=fmt)
     _autosize(ws)
 
@@ -209,7 +248,7 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
         available_capacity = f"=MAX(0,MIN(C{row_idx}*B{row_idx}*'Inputs'!$B$20,C{row_idx}*B{row_idx}*'Inputs'!$B$11*(1-'Inputs'!$B$12))-F{row_idx})"
         income_borrowed = f"=IF(IF(C{row_idx}*B{row_idx}=0,0,F{row_idx}/(C{row_idx}*B{row_idx}))>='Inputs'!$B$10,0,MIN(G{row_idx},H{row_idx}))"
         values = [
-            row.year, f"='Price Projection'!B{row_idx}", "='Inputs'!$B$7", starting_debt,
+            f"='Price Projection'!A{row_idx}", f"='Price Projection'!B{row_idx}", "='Inputs'!$B$7", starting_debt,
             interest, debt_after_interest, selected_draw, available_capacity,
             income_borrowed, f"=G{row_idx}-I{row_idx}", cumulative_income,
             f"=F{row_idx}+I{row_idx}", f"=L{row_idx}/B{row_idx}", f"=C{row_idx}-M{row_idx}",
@@ -226,6 +265,8 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
             USD_FMT, PCT_FMT, None,
         ]
         for col, (value, fmt) in enumerate(zip(values, formats, strict=True), start=1):
+            if col > 1:
+                value = _active_formula(row_idx, value)
             _cell(ws, row_idx, col, value, fmt=fmt)
     _autosize(ws)
 
@@ -233,27 +274,31 @@ def _write_income(wb: Workbook, projection: V2ProjectionResult) -> None:
 def _write_risk_alerts(wb: Workbook, projection: V2ProjectionResult) -> None:
     ws = wb.create_sheet("Risk Alerts")
     _title(ws, "Risk Alerts")
+    first = FIRST_MODEL_ROW
+    last = LAST_MODEL_ROW
+    acc_active = f"'Accumulation Engine'!$A${first}:$A${last}<>\"\""
+    inc_active = f"'Income Engine'!$A${first}:$A${last}<>\"\""
     metrics = [
         ("Accumulation risk path", None, None),
-        ("Accumulation max effective LTV", "=MAX('Accumulation Engine'!Q4:Q14)", PCT_FMT),
-        ("Accumulation min drop-to-liquidation", "=MIN('Accumulation Engine'!U4:U14)", PCT_FMT),
-        ("Accumulation first non-safe year", '=IF(COUNTIF(\'Accumulation Engine\'!$V$4:$V$14,"<>SAFE")=0,"None",INDEX(\'Accumulation Engine\'!$A$4:$A$14,AGGREGATE(15,6,(ROW(\'Accumulation Engine\'!$V$4:$V$14)-ROW(\'Accumulation Engine\'!$V$4)+1)/(\'Accumulation Engine\'!$V$4:$V$14<>"SAFE"),1)))', None),
-        ("Accumulation liquidation year", '=IFERROR(INDEX(\'Accumulation Engine\'!$A$4:$A$14,MATCH("LIQUIDATED",\'Accumulation Engine\'!$V$4:$V$14,0)),"None")', None),
-        ("Accumulation total interest accrued", "=SUM('Accumulation Engine'!E4:E14)", USD_FMT),
-        ("Accumulation total new borrowing", "=SUM('Accumulation Engine'!H4:H14)", USD_FMT),
-        ("Accumulation ending net BTC", "='Accumulation Engine'!N14", BTC_FMT),
-        ("Accumulation BTC outperformance vs passive", "='Accumulation Engine'!N14-'Inputs'!$B$7", BTC_FMT),
+        ("Accumulation max effective LTV", f"=MAX('Accumulation Engine'!Q{first}:Q{last})", PCT_FMT),
+        ("Accumulation min drop-to-liquidation", f"=MIN('Accumulation Engine'!U{first}:U{last})", PCT_FMT),
+        ("Accumulation first non-safe year", f'=IF(COUNTIFS(\'Accumulation Engine\'!$V${first}:$V${last},"<>SAFE",\'Accumulation Engine\'!$V${first}:$V${last},"<>")=0,"None",INDEX(\'Accumulation Engine\'!$A${first}:$A${last},AGGREGATE(15,6,(ROW(\'Accumulation Engine\'!$V${first}:$V${last})-ROW(\'Accumulation Engine\'!$V${first})+1)/((\'Accumulation Engine\'!$V${first}:$V${last}<>"SAFE")*(\'Accumulation Engine\'!$V${first}:$V${last}<>"")),1)))', None),
+        ("Accumulation liquidation year", f'=IFERROR(INDEX(\'Accumulation Engine\'!$A${first}:$A${last},MATCH("LIQUIDATED",\'Accumulation Engine\'!$V${first}:$V${last},0)),"None")', None),
+        ("Accumulation total interest accrued", f"=SUM('Accumulation Engine'!E{first}:E{last})", USD_FMT),
+        ("Accumulation total new borrowing", f"=SUM('Accumulation Engine'!H{first}:H{last})", USD_FMT),
+        ("Accumulation ending net BTC", _lookup_last("Accumulation Engine", "N"), BTC_FMT),
+        ("Accumulation BTC outperformance vs passive", f"={_lookup_last('Accumulation Engine', 'N')[1:]}-'Inputs'!$B$7", BTC_FMT),
         ("Income risk path", None, None),
-        ("Income max effective LTV", "=MAX('Income Engine'!P4:P14)", PCT_FMT),
-        ("Income min drop-to-liquidation", "=MIN('Income Engine'!S4:S14)", PCT_FMT),
-        ("Income first constrained year", '=IFERROR(INDEX(\'Income Engine\'!$A$4:$A$14,MATCH("CONSTRAINED",\'Income Engine\'!$T$4:$T$14,0)),"None")', None),
-        ("Income liquidation year", '=IFERROR(INDEX(\'Income Engine\'!$A$4:$A$14,MATCH("LIQUIDATED",\'Income Engine\'!$T$4:$T$14,0)),"None")', None),
-        ("Income total interest accrued", "=SUM('Income Engine'!E4:E14)", USD_FMT),
-        ("Income total funded", "=SUM('Income Engine'!I4:I14)", USD_FMT),
-        ("Income total shortfall", "=SUM('Income Engine'!J4:J14)", USD_FMT),
+        ("Income max effective LTV", f"=MAX('Income Engine'!P{first}:P{last})", PCT_FMT),
+        ("Income min drop-to-liquidation", f"=MIN('Income Engine'!S{first}:S{last})", PCT_FMT),
+        ("Income first constrained year", f'=IFERROR(INDEX(\'Income Engine\'!$A${first}:$A${last},MATCH("CONSTRAINED",\'Income Engine\'!$T${first}:$T${last},0)),"None")', None),
+        ("Income liquidation year", f'=IFERROR(INDEX(\'Income Engine\'!$A${first}:$A${last},MATCH("LIQUIDATED",\'Income Engine\'!$T${first}:$T${last},0)),"None")', None),
+        ("Income total interest accrued", f"=SUM('Income Engine'!E{first}:E{last})", USD_FMT),
+        ("Income total funded", f"=SUM('Income Engine'!I{first}:I{last})", USD_FMT),
+        ("Income total shortfall", f"=SUM('Income Engine'!J{first}:J{last})", USD_FMT),
         ("Passive hold comparison", None, None),
         ("Passive BTC held", "='Inputs'!$B$7", BTC_FMT),
-        ("Passive ending value", "='Inputs'!$B$7*'Price Projection'!B14", USD_FMT),
+        ("Passive ending value", f"='Inputs'!$B$7*{_lookup_last('Price Projection', 'B')[1:]}", USD_FMT),
     ]
     _headers(ws, 3, ["Metric", "Value"])
     for idx, (name, value, fmt) in enumerate(metrics, start=4):
@@ -272,19 +317,19 @@ def _write_summary(wb: Workbook, projection: V2ProjectionResult) -> None:
     summary = [
         ("Passive starting BTC", "='Inputs'!$B$7", BTC_FMT),
         ("Passive ending BTC", "='Inputs'!$B$7", BTC_FMT),
-        ("Passive ending value", "='Inputs'!$B$7*'Price Projection'!B14", USD_FMT),
+        ("Passive ending value", f"='Inputs'!$B$7*{_lookup_last('Price Projection', 'B')[1:]}", USD_FMT),
         ("Accumulation setup gross BTC", "='Accumulation Engine'!J4", BTC_FMT),
-        ("Accumulation ending gross BTC", "='Accumulation Engine'!J14", BTC_FMT),
-        ("Accumulation ending debt", "='Accumulation Engine'!K14", USD_FMT),
-        ("Accumulation ending net BTC", "='Accumulation Engine'!N14", BTC_FMT),
-        ("Accumulation ending LTV", "='Accumulation Engine'!Q14", PCT_FMT),
-        ("Accumulation status", "='Accumulation Engine'!V14", None),
+        ("Accumulation ending gross BTC", _lookup_last("Accumulation Engine", "J"), BTC_FMT),
+        ("Accumulation ending debt", _lookup_last("Accumulation Engine", "K"), USD_FMT),
+        ("Accumulation ending net BTC", _lookup_last("Accumulation Engine", "N"), BTC_FMT),
+        ("Accumulation ending LTV", _lookup_last("Accumulation Engine", "Q"), PCT_FMT),
+        ("Accumulation status", _lookup_last("Accumulation Engine", "V"), None),
         ("Income selected draw year 1", "='Inputs'!$B$19", USD_FMT),
         ("Income funded year 1", "='Income Engine'!I5", USD_FMT),
         ("Income shortfall year 1", "='Income Engine'!J5", USD_FMT),
-        ("Income ending debt", "='Income Engine'!L14", USD_FMT),
-        ("Income ending net BTC", "='Income Engine'!N14", BTC_FMT),
-        ("Income status", "='Income Engine'!T14", None),
+        ("Income ending debt", _lookup_last("Income Engine", "L"), USD_FMT),
+        ("Income ending net BTC", _lookup_last("Income Engine", "N"), BTC_FMT),
+        ("Income status", _lookup_last("Income Engine", "T"), None),
     ]
     _headers(ws, 3, ["Metric", "Value"])
     for idx, (name, value, fmt) in enumerate(summary, start=4):
@@ -368,7 +413,7 @@ def build_workbook_v2(output_path: str | Path = "btc_leveraged_model_v2.xlsx") -
     """Build and save the v2 workbook. Returns the saved path."""
 
     output_path = Path(output_path)
-    projection = run_v2_projection(default_v2_inputs(projection_years=10))
+    projection = run_v2_projection(default_v2_inputs(projection_years=MAX_PROJECTION_YEARS))
     wb = Workbook()
     _write_inputs(wb, projection)
     _write_price_projection(wb, projection)

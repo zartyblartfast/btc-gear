@@ -74,27 +74,36 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert summary["A14"].value == "Income funded year 1"
 
     inputs = wb["Inputs"]
-    input_labels = [inputs.cell(row=row, column=1).value for row in range(4, 22)]
+    input_labels = [inputs.cell(row=row, column=1).value for row in range(4, 27)]
     assert "Annual BTC Price Growth" in input_labels
+    assert "Projection Years" in input_labels
+    assert "Start Year" in input_labels
     assert "Selected Annual Income Draw" in input_labels
     assert "Max Available Annual Income (Year 1)" in input_labels
     assert "Annual Income Target" not in input_labels
 
     price_projection = wb["Price Projection"]
-    assert price_projection["B4"].value == "='Inputs'!$B$5"
-    assert price_projection["B5"].value == "=B4*(1+'Inputs'!$B$6)"
-    assert price_projection["D4"].value == 0
-    assert price_projection["D5"].value == "=B5/B4-1"
+    assert price_projection["A4"].value == '=IF(0<=\'Inputs\'!$B$25,\'Inputs\'!$B$26+0,"")'
+    assert price_projection["A14"].value == '=IF(10<=\'Inputs\'!$B$25,\'Inputs\'!$B$26+10,"")'
+    assert price_projection["B4"].value == '=IF($A4="", "", \'Inputs\'!$B$5)'
+    assert price_projection["B5"].value == '=IF($A5="","",B4*(1+\'Inputs\'!$B$6))'
+    assert price_projection["D4"].value == '=IF($A4="","",0)'
+    assert price_projection["D5"].value == '=IF($A5="","",B5/B4-1)'
 
     assert inputs["A5"].value == "Current BTC Price"
     assert inputs["A6"].value == "Annual BTC Price Growth"
+    assert inputs["A25"].value == "Projection Years"
+    assert inputs["A26"].value == "Start Year"
     assert inputs["B5"].value == pytest.approx(60_000.0)
     assert inputs["B6"].value == 0
+    assert inputs["B25"].value == 10
+    assert inputs["B26"].value == 2026
 
     accumulation = wb["Accumulation Engine"]
     assert accumulation["A3"].value == "Year"
-    assert accumulation["B4"].value == "='Price Projection'!B4"
-    assert accumulation["B5"].value == "='Price Projection'!B5"
+    assert accumulation["A4"].value == "='Price Projection'!A4"
+    assert accumulation["B4"].value == '=IF($A4="","",\'Price Projection\'!B4)'
+    assert accumulation["B5"].value == '=IF($A5="","",\'Price Projection\'!B5)'
     assert accumulation["C3"].value == "Starting Collateral BTC"
     assert accumulation["D3"].value == "Starting Debt"
     assert accumulation["E3"].value == "Interest Accrued"
@@ -110,14 +119,14 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert accumulation["S3"].value == "Margin-Call Price"
     assert accumulation["U3"].value == "Drop to Liquidation"
     assert accumulation["V3"].value == "Risk Status"
-    assert accumulation["C4"].value == "='Inputs'!$B$7"
-    assert accumulation["J4"].value == "=C4+I4"
-    assert accumulation["D5"].value == "=K4"
-    assert accumulation["E5"].value == "=D5*'Inputs'!$B$8"
-    assert accumulation["F5"].value == '=IF(\'Inputs\'!$B$9="capitalized",D5+E5,D5)'
-    assert accumulation["G5"].value == "=IF(C5*B5=0,0,F5/(C5*B5))"
-    assert accumulation["Q5"].value == "=IF(J5*B5=0,0,K5/(J5*B5))"
-    assert accumulation["R5"].value == "=L5/'Inputs'!$B$7"
+    assert accumulation["C4"].value == '=IF($A4="","",\'Inputs\'!$B$7)'
+    assert accumulation["J4"].value == '=IF($A4="","",C4+I4)'
+    assert accumulation["D5"].value == '=IF($A5="","",K4)'
+    assert accumulation["E5"].value == '=IF($A5="","",D5*\'Inputs\'!$B$8)'
+    assert "capitalized" in accumulation["F5"].value
+    assert accumulation["G5"].value == '=IF($A5="","",IF(C5*B5=0,0,F5/(C5*B5)))'
+    assert accumulation["Q5"].value == '=IF($A5="","",IF(J5*B5=0,0,K5/(J5*B5)))'
+    assert accumulation["R5"].value == '=IF($A5="","",L5/\'Inputs\'!$B$7)'
 
     income = wb["Income Engine"]
     assert income["D3"].value == "Starting Debt"
@@ -132,10 +141,12 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert income["Q3"].value == "Margin-Call Price"
     assert income["S3"].value == "Drop to Liquidation"
     assert income["T3"].value == "Sustainability Status"
-    assert income["D5"].value == "=L4"
-    assert income["G5"].value == "='Inputs'!$B$19"
-    assert income["H5"].value == "=MAX(0,MIN(C5*B5*'Inputs'!$B$20,C5*B5*'Inputs'!$B$11*(1-'Inputs'!$B$12))-F5)"
-    assert income["K5"].value == "=K4+I5"
+    assert income["A5"].value == "='Price Projection'!A5"
+    assert income["B5"].value == '=IF($A5="","",\'Price Projection\'!B5)'
+    assert income["D5"].value == '=IF($A5="","",L4)'
+    assert income["G5"].value == '=IF($A5="","",\'Inputs\'!$B$19)'
+    assert income["H5"].value == '=IF($A5="","",MAX(0,MIN(C5*B5*\'Inputs\'!$B$20,C5*B5*\'Inputs\'!$B$11*(1-\'Inputs\'!$B$12))-F5))'
+    assert income["K5"].value == '=IF($A5="","",K4+I5)'
     assert income["T5"].value.startswith("=IF(")
 
     risk = wb["Risk Alerts"]
@@ -146,11 +157,11 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert "Income min drop-to-liquidation" in risk_metrics
     assert "Income liquidation year" in risk_metrics
     assert "Income total interest accrued" in risk_metrics
-    assert risk["B5"].value == "=MAX('Accumulation Engine'!Q4:Q14)"
-    assert risk["B9"].value == "=SUM('Accumulation Engine'!E4:E14)"
-    assert risk["B14"].value == "=MAX('Income Engine'!P4:P14)"
+    assert risk["B5"].value == "=MAX('Accumulation Engine'!Q4:Q34)"
+    assert risk["B9"].value == "=SUM('Accumulation Engine'!E4:E34)"
+    assert risk["B14"].value == "=MAX('Income Engine'!P4:P34)"
 
-    assert summary["B6"].value == "='Inputs'!$B$7*'Price Projection'!B14"
+    assert "Price Projection" in summary["B6"].value and "LOOKUP" in summary["B6"].value
     assert summary["B13"].value == "='Inputs'!$B$19"
 
     audit = wb["Audit Examples"]
