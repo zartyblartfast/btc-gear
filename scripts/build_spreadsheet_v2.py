@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
@@ -364,7 +365,7 @@ def _write_audit_examples(wb: Workbook, projection: V2ProjectionResult) -> None:
         (22, "BTC price", 100_000.0, USD_FMT),
         (23, "Existing debt", 30_000.0, USD_FMT),
         (24, "Income LTV ceiling", 0.35, PCT_FMT),
-        (25, "Requested income", 50_000.0, USD_FMT),
+        (25, "Selected income draw", 50_000.0, USD_FMT),
         (26, "Max safe debt", 70_000.0, USD_FMT),
         (27, "Income borrowed", income_capacity.income_borrowed_usd, USD_FMT),
         (28, "Unfunded income", income_capacity.income_shortfall_usd, USD_FMT),
@@ -398,6 +399,20 @@ def build_workbook_v2(output_path: str | Path = "btc_leveraged_model_v2.xlsx") -
     return output_path
 
 
-if __name__ == "__main__":
-    path = build_workbook_v2()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build the v2 BTC-backed loan model workbook.")
+    parser.add_argument(
+        "--output",
+        "-o",
+        default="btc_leveraged_model_v2.xlsx",
+        help="Output .xlsx path (default: btc_leveraged_model_v2.xlsx)",
+    )
+    args = parser.parse_args(argv)
+
+    path = build_workbook_v2(args.output)
     print(f"Wrote {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

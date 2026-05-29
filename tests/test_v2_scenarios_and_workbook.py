@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from model_v2.scenarios import default_v2_inputs, run_v2_projection  # noqa: E402
+from scripts.build_spreadsheet import build_workbook as build_canonical_workbook  # noqa: E402
 from scripts.build_spreadsheet_v2 import build_workbook_v2  # noqa: E402
 
 
@@ -134,5 +135,20 @@ def test_v2_workbook_builder_creates_expected_tabs_and_values(tmp_path: Path) ->
     assert audit["A13"].value == "Double-loop / 30.6% effective LTV example"
     assert audit["B17"].value == pytest.approx(0.306)
     assert audit["A20"].value == "Income capacity example"
+    assert audit["A25"].value == "Selected income draw"
     assert audit["B27"].value == pytest.approx(40_000.0)
     assert audit["B28"].value == pytest.approx(10_000.0)
+
+
+def test_canonical_build_spreadsheet_script_builds_v2_without_legacy_income_label(tmp_path: Path) -> None:
+    output_path = tmp_path / "canonical.xlsx"
+
+    build_canonical_workbook(output_path)
+
+    wb = load_workbook(output_path, data_only=True)
+    assert "Income Engine" in wb.sheetnames
+    inputs = wb["Inputs"]
+    labels = [inputs.cell(row=row, column=1).value for row in range(1, 50)]
+    assert "Selected Annual Income Draw" in labels
+    assert "Max Available Annual Income (Year 1)" in labels
+    assert "Annual Income Target" not in labels
