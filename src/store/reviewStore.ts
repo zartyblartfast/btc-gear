@@ -184,7 +184,7 @@ function isReviewSnapshotArray(value: unknown): value is ReviewSnapshot[] {
   return Array.isArray(value) && value.every(isReviewSnapshot);
 }
 
-function isReviewSnapshot(value: unknown): value is ReviewSnapshot {
+export function isReviewSnapshot(value: unknown): value is ReviewSnapshot {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&
@@ -205,7 +205,7 @@ function isReviewSnapshot(value: unknown): value is ReviewSnapshot {
   );
 }
 
-function isBaselineSnapshot(value: unknown): value is BaselineSnapshot {
+export function isBaselineSnapshot(value: unknown): value is BaselineSnapshot {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&

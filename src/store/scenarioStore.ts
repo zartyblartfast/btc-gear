@@ -89,7 +89,7 @@ function isSavedScenarioArray(value: unknown): value is SavedScenario[] {
   return Array.isArray(value) && value.every(isSavedScenario);
 }
 
-function isSavedScenario(value: unknown): value is SavedScenario {
+export function isSavedScenario(value: unknown): value is SavedScenario {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&
