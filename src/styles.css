@@ -75,6 +75,51 @@ h1, h2 {
   color: #cbd5e1;
 }
 
+.summary-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 24px;
+}
+
+.summary-card {
+  border: 1px solid #334155;
+  border-radius: 16px;
+  background: #0f172a;
+  padding: 18px;
+}
+
+.summary-card h3 {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+
+.summary-card-value {
+  color: #f8fafc;
+  font-size: 1.7rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.summary-card-detail {
+  font-size: 0.9rem;
+  margin: 8px 0 0;
+}
+
+.summary-card--safe {
+  border-color: #16a34a;
+}
+
+.summary-card--warning {
+  border-color: #f59e0b;
+}
+
+.summary-card--danger {
+  border-color: #dc2626;
+}
+
 @media (max-width: 760px) {
   .app-header {
     align-items: start;

@@ -10,33 +10,33 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30, after Stage 2 completion
+Last updated: 2026-05-30, after Stage 3.1 summary cards
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit in this checkout: `ca9af23 feat: add profile export import helpers`
-- Local branch state at time of update: ahead of `origin/main` by local progress commits that may still need pushing
-- Local tracked changes at time of update: this plan file only
+- Latest verified implementation commit before this plan update: worktree changes for Stage 3.1 summary cards
+- Local branch state at time of update: even with `origin/main` before Stage 3.1 commit
+- Local tracked changes at time of update: Stage 3.1 dashboard/helper/tests/styles plus this plan file
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run` -> 15 test files passed, 93 tests passed
+- `npm test -- --run` -> 17 test files passed, 98 tests passed
 - `npm run build` -> passed
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
 - [x] Stage 2: Local-first data is complete.
-- [ ] Stage 3: Dashboard UI is next. Start with summary cards and chart data helpers.
+- [~] Stage 3: Dashboard UI is in progress. Summary cards are complete; chart data helpers are next.
 - [ ] Stage 4: Strategy / Inputs UI waits for store-backed config editing.
 - [ ] Stage 5: What If UI waits for scenario store.
 - [ ] Stage 6: Review UI waits for review store and baseline operations.
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 3.1: implement Dashboard summary cards using engine projection output.
-2. Keep chart/card data helpers unit-tested separately from React/Recharts rendering.
+1. Start Stage 3.2: implement core projection chart data helpers, then render the core charts.
+2. Unit-test chart data helpers separately from Recharts rendering.
 3. Keep stores local-first and avoid direct localStorage access in components.
 
 Resume command checklist:
@@ -220,7 +220,9 @@ Acceptance:
 
 ## [ ] Stage 3: Dashboard UI
 
-### [ ] Task 3.1: Summary cards
+### [x] Task 3.1: Summary cards
+
+Progress note: Complete. Dashboard summary cards render from engine projection output via unit-tested `src/dashboard/summaryCards.ts`; `DashboardPage` accepts config changes and re-renders card values.
 
 Acceptance:
 - dashboard renders current BTC price, debt, LTV, buffer, income, final net BTC
