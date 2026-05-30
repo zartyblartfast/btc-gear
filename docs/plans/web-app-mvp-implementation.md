@@ -10,23 +10,24 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30
+Last updated: 2026-05-30, after Stage 2.1
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified commit in this checkout: `8e31c98 test: add web engine golden fixtures`
+- Latest verified implementation commit in this checkout: `c1d8870 feat: add local-first profile store`
+- Local branch state at time of update: ahead of `origin/main` by local progress commits that may still need pushing
 - Local tracked changes at time of update: this plan file only
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run` -> 9 test files passed, 61 tests passed
+- `npm test -- --run` -> 11 test files passed, 71 tests passed
 - `npm run build` -> passed
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
-- [ ] Stage 2: Local-first data is next. Start here after reconnecting.
+- [ ] Stage 2: Local-first data is in progress. Stage 2.1 is complete; continue with scenarios store.
 - [ ] Stage 3: Dashboard UI waits for Stage 2 foundation and chart data helpers.
 - [ ] Stage 4: Strategy / Inputs UI waits for store-backed config editing.
 - [ ] Stage 5: What If UI waits for scenario store.
@@ -34,8 +35,8 @@ Progress summary:
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 2.1: implement `src/store/storage.ts` and `src/store/profileStore.ts` with tests.
-2. Use TDD and keep localStorage isolated behind a storage adapter.
+1. Start Stage 2.2: implement scenarios store with tests.
+2. Keep storage access behind the existing `KeyValueStorage` adapter from `src/store/storage.ts`.
 3. After Stage 2.3 creates real review/rebaseline operations, add the deferred Review/Rebaseline golden or integration fixture from `docs/web-app/test-strategy.md`.
 
 Resume command checklist:
@@ -174,10 +175,12 @@ Acceptance:
 
 ## [ ] Stage 2: Local-first data
 
-Progress note: Stage 2 is the next active stage. The priority is durable local profile/scenario/review state with tests before adding more UI. Review/rebaseline fixture coverage remains deferred until real review operations exist.
+Progress note: Stage 2 is in progress. Stage 2.1 added storage adapters and profile config persistence with tests. The next priority is scenario persistence, followed by review/baseline operations. Review/rebaseline fixture coverage remains deferred until real review operations exist.
 
 
-### [ ] Task 2.1: Implement profile store abstraction
+### [x] Task 2.1: Implement profile store abstraction
+
+Progress note: Complete in `c1d8870 feat: add local-first profile store`. Added `src/store/storage.ts`, `src/store/profileStore.ts`, memory/browser storage adapters, default config load/save/reset, malformed JSON fallback, wrong-shape fallback, and defensive copy behavior.
 
 Files:
 - `src/store/storage.ts`
