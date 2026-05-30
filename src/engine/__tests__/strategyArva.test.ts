@@ -97,6 +97,6 @@ describe('ARVA strategy', () => {
     expect(row.actualDrawUsd).toBeCloseTo(5_000, 10);
     expect(row.skippedIncomeUsd).toBeCloseTo(8_000, 10);
     expect(row.status).toBe('constrained');
-    expect(row.reasonCodes).toContain('arva_safety_override');
+    expect(row.reasonCodes).toContain('safety_override');
   });
 });

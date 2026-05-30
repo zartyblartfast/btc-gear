@@ -1,4 +1,4 @@
-import { calculateArvaDecision } from './strategyArva';
+import { calculateArvaDecision, calculateArvaGuardrailsDecision } from './strategyArva';
 import { calculateSupplementalGuardrailDecision } from './strategySupplementalGuardrail';
 import type { NormalizedBtcGearConfig, ProjectionStatus, StrategyConfig } from './types';
 
@@ -14,6 +14,7 @@ export function calculateStrategyDecision({
   availableSafeDrawUsd,
   config,
   yearIndex,
+  previousActualDrawUsd,
   debtUsd,
   btcPriceUsd,
 }: {
@@ -33,6 +34,15 @@ export function calculateStrategyDecision({
     case 'arva':
       return calculateArvaDecision({ strategy, availableSafeDrawUsd, config, yearIndex, debtUsd, btcPriceUsd });
     case 'arvaGuardrails':
+      return calculateArvaGuardrailsDecision({
+        strategy,
+        availableSafeDrawUsd,
+        config,
+        yearIndex,
+        previousActualDrawUsd,
+        debtUsd,
+        btcPriceUsd,
+      });
     case 'maxSafeCapacity':
       throw new Error(`${strategy.kind} strategy is not implemented in the current engine slice`);
   }
