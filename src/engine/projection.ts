@@ -30,6 +30,8 @@ export function buildProjection(config: BtcGearConfig): ProjectionResult {
       config: normalizedConfig,
       yearIndex: index,
       previousActualDrawUsd: rows[index - 1]?.actualDrawUsd,
+      debtUsd: debtAfterInterestUsd,
+      btcPriceUsd,
     });
     const endingDebtUsd = debtAfterInterestUsd + strategyDecision.actualDrawUsd;
     const endingRisk = calculateRiskMetrics({

@@ -200,8 +200,12 @@ function validateStrategy(config: BtcGearConfig): void {
       break;
     case 'arva':
       validateFinite('assumedRealReturnPct', strategy.assumedRealReturnPct);
+      if (strategy.assumedRealReturnPct <= -100) throw new Error('assumedRealReturnPct must be > -100');
       validateNonNegative('terminalReserveBtc', strategy.terminalReserveBtc);
       if (strategy.incomeCapUsd !== undefined) validateNonNegative('incomeCapUsd', strategy.incomeCapUsd);
+      if (config.currentAge === undefined || config.planningAge === undefined) {
+        throw new Error('ARVA requires currentAge and planningAge');
+      }
       break;
     case 'arvaGuardrails':
       validateFinite('assumedRealReturnPct', strategy.assumedRealReturnPct);
