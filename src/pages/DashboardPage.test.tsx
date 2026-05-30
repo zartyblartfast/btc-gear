@@ -56,4 +56,14 @@ describe('DashboardPage', () => {
     expect(screen.getByText('$50,000')).toBeInTheDocument();
     expect(screen.queryByText('$100,000')).not.toBeInTheDocument();
   });
+
+  it('renders the core projection chart sections without testing Recharts internals', () => {
+    render(<DashboardPage config={config} />);
+
+    expect(screen.getByRole('region', { name: 'Projection charts' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'BTC price vs liquidation price' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'LTV bands' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Income drawn vs skipped' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Net BTC after debt' })).toBeInTheDocument();
+  });
 });

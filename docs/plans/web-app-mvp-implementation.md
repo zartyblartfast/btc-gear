@@ -10,33 +10,33 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30, after Stage 3.1 summary cards
+Last updated: 2026-05-30, after Stage 3.2 core projection charts
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit before this plan update: worktree changes for Stage 3.1 summary cards
-- Local branch state at time of update: even with `origin/main` before Stage 3.1 commit
-- Local tracked changes at time of update: Stage 3.1 dashboard/helper/tests/styles plus this plan file
+- Latest verified implementation commit in this checkout: `fbd7fe6 feat: add dashboard projection charts`
+- Local branch state at time of update: ahead of `origin/main` by Stage 3.1 and Stage 3.2 commits
+- Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run` -> 17 test files passed, 98 tests passed
-- `npm run build` -> passed
+- `npm test -- --run` -> 18 test files passed, 101 tests passed
+- `npm run build` -> passed with Vite chunk-size warning after adding Recharts charts
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
 - [x] Stage 2: Local-first data is complete.
-- [~] Stage 3: Dashboard UI is in progress. Summary cards are complete; chart data helpers are next.
+- [~] Stage 3: Dashboard UI is in progress. Summary cards and core projection charts are complete; Strategy Tradeoff Map is next.
 - [ ] Stage 4: Strategy / Inputs UI waits for store-backed config editing.
 - [ ] Stage 5: What If UI waits for scenario store.
 - [ ] Stage 6: Review UI waits for review store and baseline operations.
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 3.2: implement core projection chart data helpers, then render the core charts.
-2. Unit-test chart data helpers separately from Recharts rendering.
+1. Start Stage 3.3: implement Strategy Tradeoff Map.
+2. Unit-test scenario grid generation, current scenario marker, and best tradeoff scoring.
 3. Keep stores local-first and avoid direct localStorage access in components.
 
 Resume command checklist:
@@ -228,7 +228,9 @@ Acceptance:
 - dashboard renders current BTC price, debt, LTV, buffer, income, final net BTC
 - changing config updates cards
 
-### [ ] Task 3.2: Core projection charts
+### [x] Task 3.2: Core projection charts
+
+Progress note: Complete. Dashboard renders BTC price vs liquidation price, LTV bands, income drawn vs skipped, and net BTC after debt using Recharts. Chart rows come from unit-tested `src/dashboard/chartData.ts`, mapped directly from engine projection output.
 
 Charts:
 - BTC price vs liquidation price
