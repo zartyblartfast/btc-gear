@@ -59,7 +59,7 @@ function cloneConfig(config: BtcGearConfig): BtcGearConfig {
   return JSON.parse(JSON.stringify(config)) as BtcGearConfig;
 }
 
-function isBtcGearConfig(value: unknown): value is BtcGearConfig {
+export function isBtcGearConfig(value: unknown): value is BtcGearConfig {
   if (!isRecord(value)) {
     return false;
   }
