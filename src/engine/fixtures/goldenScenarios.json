@@ -1,0 +1,380 @@
+[
+  {
+    "id": "flat-fixed-draw-all-safe",
+    "description": "Flat BTC, fixed draw, all years stay green.",
+    "calculatedBy": "python-reference",
+    "reviewedAt": "2026-05-30",
+    "config": {
+      "startYear": 2026,
+      "projectionYears": 3,
+      "position": {
+        "totalBtcHeld": 1,
+        "collateralBtc": 1,
+        "debtUsd": 0,
+        "btcPriceUsd": 100000
+      },
+      "loan": {
+        "aprPct": 0,
+        "liquidationLtvPct": 50,
+        "incomeLtvCeilingPct": 45,
+        "requiredDropBufferPct": 20
+      },
+      "pricePath": {
+        "kind": "flat"
+      },
+      "strategy": {
+        "kind": "fixedDraw",
+        "annualDrawUsd": 10000
+      }
+    },
+    "expectedRows": [
+      {
+        "year": 2026,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 10000,
+        "actualDrawUsd": 10000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 10000.0,
+        "ltvPct": 10.0,
+        "dropToLiquidationPct": 80.0,
+        "netBtcAfterDebt": 0.9,
+        "status": "green"
+      },
+      {
+        "year": 2027,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 10000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 10000,
+        "actualDrawUsd": 10000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 20000.0,
+        "ltvPct": 20.0,
+        "dropToLiquidationPct": 60.0,
+        "netBtcAfterDebt": 0.8,
+        "status": "green"
+      },
+      {
+        "year": 2028,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 20000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 10000,
+        "actualDrawUsd": 10000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 30000.0,
+        "ltvPct": 30.0,
+        "dropToLiquidationPct": 40.0,
+        "netBtcAfterDebt": 0.7,
+        "status": "green"
+      }
+    ]
+  },
+  {
+    "id": "bear-fixed-draw-constrained",
+    "description": "Bear path, fixed draw becomes constrained by safe capacity.",
+    "calculatedBy": "python-reference",
+    "reviewedAt": "2026-05-30",
+    "config": {
+      "startYear": 2026,
+      "projectionYears": 3,
+      "position": {
+        "totalBtcHeld": 1,
+        "collateralBtc": 1,
+        "debtUsd": 0,
+        "btcPriceUsd": 100000
+      },
+      "loan": {
+        "aprPct": 0,
+        "liquidationLtvPct": 50,
+        "incomeLtvCeilingPct": 45,
+        "requiredDropBufferPct": 20
+      },
+      "pricePath": {
+        "kind": "explicit",
+        "pricesUsd": [
+          100000,
+          80000,
+          70000
+        ]
+      },
+      "strategy": {
+        "kind": "fixedDraw",
+        "annualDrawUsd": 20000
+      }
+    },
+    "expectedRows": [
+      {
+        "year": 2026,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 20000,
+        "actualDrawUsd": 20000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 20000.0,
+        "ltvPct": 20.0,
+        "dropToLiquidationPct": 60.0,
+        "netBtcAfterDebt": 0.8,
+        "status": "green"
+      },
+      {
+        "year": 2027,
+        "btcPriceUsd": 80000,
+        "startingDebtUsd": 20000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 20000,
+        "actualDrawUsd": 12000.0,
+        "skippedIncomeUsd": 8000.0,
+        "endingDebtUsd": 32000.0,
+        "ltvPct": 40.0,
+        "dropToLiquidationPct": 20.0,
+        "netBtcAfterDebt": 0.6,
+        "status": "constrained"
+      },
+      {
+        "year": 2028,
+        "btcPriceUsd": 70000,
+        "startingDebtUsd": 32000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 20000,
+        "actualDrawUsd": 0,
+        "skippedIncomeUsd": 20000,
+        "endingDebtUsd": 32000.0,
+        "ltvPct": 45.714285714285715,
+        "dropToLiquidationPct": 8.571428571428571,
+        "netBtcAfterDebt": 0.5428571428571429,
+        "status": "constrained"
+      }
+    ]
+  },
+  {
+    "id": "bear-recovery-supplemental-resumes",
+    "description": "Bear then recovery, Supplemental Guardrail reduces, skips, then resumes without liquidation.",
+    "calculatedBy": "python-reference",
+    "reviewedAt": "2026-05-30",
+    "config": {
+      "startYear": 2026,
+      "projectionYears": 4,
+      "position": {
+        "totalBtcHeld": 1,
+        "collateralBtc": 1,
+        "debtUsd": 20000,
+        "btcPriceUsd": 100000
+      },
+      "loan": {
+        "aprPct": 0,
+        "liquidationLtvPct": 50,
+        "incomeLtvCeilingPct": 45,
+        "requiredDropBufferPct": 20
+      },
+      "pricePath": {
+        "kind": "explicit",
+        "pricesUsd": [
+          100000,
+          90000,
+          80000,
+          150000
+        ]
+      },
+      "strategy": {
+        "kind": "supplementalGuardrail",
+        "desiredDrawUsd": 15000
+      }
+    },
+    "expectedRows": [
+      {
+        "year": 2026,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 20000,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 15000,
+        "actualDrawUsd": 15000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 35000.0,
+        "ltvPct": 35.0,
+        "dropToLiquidationPct": 30.0,
+        "netBtcAfterDebt": 0.65,
+        "status": "green"
+      },
+      {
+        "year": 2027,
+        "btcPriceUsd": 90000,
+        "startingDebtUsd": 35000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 15000,
+        "actualDrawUsd": 1000.0,
+        "skippedIncomeUsd": 14000.0,
+        "endingDebtUsd": 36000.0,
+        "ltvPct": 40.0,
+        "dropToLiquidationPct": 20.0,
+        "netBtcAfterDebt": 0.6,
+        "status": "constrained"
+      },
+      {
+        "year": 2028,
+        "btcPriceUsd": 80000,
+        "startingDebtUsd": 36000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 15000,
+        "actualDrawUsd": 0,
+        "skippedIncomeUsd": 15000,
+        "endingDebtUsd": 36000.0,
+        "ltvPct": 45.0,
+        "dropToLiquidationPct": 10.0,
+        "netBtcAfterDebt": 0.55,
+        "status": "constrained"
+      },
+      {
+        "year": 2029,
+        "btcPriceUsd": 150000,
+        "startingDebtUsd": 36000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 15000,
+        "actualDrawUsd": 15000,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 51000.0,
+        "ltvPct": 34.0,
+        "dropToLiquidationPct": 32.0,
+        "netBtcAfterDebt": 0.6599999999999999,
+        "status": "green"
+      }
+    ]
+  },
+  {
+    "id": "bull-arva-income-rises",
+    "description": "Bull path, ARVA recalculation increases income over time.",
+    "calculatedBy": "python-reference",
+    "reviewedAt": "2026-05-30",
+    "config": {
+      "startYear": 2026,
+      "projectionYears": 2,
+      "currentAge": 65,
+      "planningAge": 66,
+      "position": {
+        "totalBtcHeld": 1,
+        "collateralBtc": 1,
+        "debtUsd": 0,
+        "btcPriceUsd": 100000
+      },
+      "loan": {
+        "aprPct": 0,
+        "liquidationLtvPct": 100,
+        "incomeLtvCeilingPct": 90,
+        "requiredDropBufferPct": 0
+      },
+      "pricePath": {
+        "kind": "explicit",
+        "pricesUsd": [
+          100000,
+          200000
+        ]
+      },
+      "strategy": {
+        "kind": "arva",
+        "assumedRealReturnPct": 0,
+        "terminalReserveBtc": 0
+      }
+    },
+    "expectedRows": [
+      {
+        "year": 2026,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 50000.0,
+        "actualDrawUsd": 50000.0,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 50000.0,
+        "ltvPct": 50.0,
+        "dropToLiquidationPct": 50.0,
+        "netBtcAfterDebt": 0.5,
+        "status": "green"
+      },
+      {
+        "year": 2027,
+        "btcPriceUsd": 200000,
+        "startingDebtUsd": 50000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 150000.0,
+        "actualDrawUsd": 130000.0,
+        "skippedIncomeUsd": 20000.0,
+        "endingDebtUsd": 180000.0,
+        "ltvPct": 90.0,
+        "dropToLiquidationPct": 10.0,
+        "netBtcAfterDebt": 0.09999999999999998,
+        "status": "constrained"
+      }
+    ]
+  },
+  {
+    "id": "crash-arva-guardrails-safety-override",
+    "description": "Crash path, ARVA Guardrails safety override beats smoothing.",
+    "calculatedBy": "python-reference",
+    "reviewedAt": "2026-05-30",
+    "config": {
+      "startYear": 2026,
+      "projectionYears": 2,
+      "currentAge": 65,
+      "planningAge": 69,
+      "position": {
+        "totalBtcHeld": 1,
+        "collateralBtc": 1,
+        "debtUsd": 0,
+        "btcPriceUsd": 100000
+      },
+      "loan": {
+        "aprPct": 0,
+        "liquidationLtvPct": 100,
+        "incomeLtvCeilingPct": 90,
+        "requiredDropBufferPct": 0
+      },
+      "pricePath": {
+        "kind": "explicit",
+        "pricesUsd": [
+          100000,
+          30000
+        ]
+      },
+      "strategy": {
+        "kind": "arvaGuardrails",
+        "assumedRealReturnPct": 0,
+        "terminalReserveBtc": 0,
+        "maxAnnualIncreasePct": 10,
+        "maxAnnualDecreasePct": 10
+      }
+    },
+    "expectedRows": [
+      {
+        "year": 2026,
+        "btcPriceUsd": 100000,
+        "startingDebtUsd": 0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 20000.0,
+        "actualDrawUsd": 20000.0,
+        "skippedIncomeUsd": 0,
+        "endingDebtUsd": 20000.0,
+        "ltvPct": 20.0,
+        "dropToLiquidationPct": 80.0,
+        "netBtcAfterDebt": 0.8,
+        "status": "green"
+      },
+      {
+        "year": 2027,
+        "btcPriceUsd": 30000,
+        "startingDebtUsd": 20000.0,
+        "interestUsd": 0.0,
+        "targetDrawUsd": 18000.0,
+        "actualDrawUsd": 7000.0,
+        "skippedIncomeUsd": 11000.0,
+        "endingDebtUsd": 27000.0,
+        "ltvPct": 90.0,
+        "dropToLiquidationPct": 10.0,
+        "netBtcAfterDebt": 0.09999999999999998,
+        "status": "constrained"
+      }
+    ]
+  }
+]
