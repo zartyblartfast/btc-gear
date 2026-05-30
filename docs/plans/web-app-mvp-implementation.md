@@ -10,34 +10,36 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30, after Stage 3.2 core projection charts
+Last updated: 2026-05-30, after Stage 3.3 Strategy Tradeoff Map
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit in this checkout: `fbd7fe6 feat: add dashboard projection charts`
-- Local branch state at time of update: ahead of `origin/main` by Stage 3.1 and Stage 3.2 commits
+- Latest verified implementation commit before this update: `6c96972 feat: add dashboard projection charts`
+- Latest verified implementation commit after this update: `df6200d feat: add strategy tradeoff map`
+- Local branch state at time of update: ahead of `origin/main` by Stage 3.3 commit
 - Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run` -> 18 test files passed, 101 tests passed
-- `npm run build` -> passed with Vite chunk-size warning after adding Recharts charts
+- `npm test -- --run src/dashboard/__tests__/tradeoffMap.test.ts src/pages/DashboardPage.test.tsx` -> 2 test files passed, 10 tests passed
+- `npm test -- --run` -> 19 test files passed, 108 tests passed
+- `npm run build` -> passed with existing Vite chunk-size warning after adding Recharts charts
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
 - [x] Stage 2: Local-first data is complete.
-- [~] Stage 3: Dashboard UI is in progress. Summary cards and core projection charts are complete; Strategy Tradeoff Map is next.
-- [ ] Stage 4: Strategy / Inputs UI waits for store-backed config editing.
+- [x] Stage 3: Dashboard UI is complete with summary cards, core projection charts, and Strategy Tradeoff Map.
+- [ ] Stage 4: Strategy / Inputs UI is next; implement store-backed config editing.
 - [ ] Stage 5: What If UI waits for scenario store.
 - [ ] Stage 6: Review UI waits for review store and baseline operations.
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 3.3: implement Strategy Tradeoff Map.
-2. Unit-test scenario grid generation, current scenario marker, and best tradeoff scoring.
-3. Keep stores local-first and avoid direct localStorage access in components.
+1. Start Stage 4: Strategy / Inputs UI.
+2. Implement user-editable position, loan terms, price path, and strategy params backed by the local-first profile store.
+3. Keep strategy-specific fields conditional and persist config locally.
 
 Resume command checklist:
 ```bash
@@ -218,7 +220,7 @@ Acceptance:
 - invalid app/schema rejected
 - import preview returns counts
 
-## [ ] Stage 3: Dashboard UI
+## [x] Stage 3: Dashboard UI
 
 ### [x] Task 3.1: Summary cards
 
@@ -241,7 +243,9 @@ Charts:
 Acceptance:
 - chart data helpers are unit tested separately from Recharts rendering
 
-### [ ] Task 3.3: Strategy Tradeoff Map
+### [x] Task 3.3: Strategy Tradeoff Map
+
+Progress note: Complete. Added pure `src/dashboard/tradeoffMap.ts` helpers for projection-backed scenario grid generation, current scenario marking, normalized recommendation scoring, unsafe/max-safe recommendation exclusions, and no-recommendation messaging. Dashboard renders the Strategy Tradeoff Map scatter chart with current/recommended markers, status legend, quadrant labels, and tooltips.
 
 Acceptance:
 - scenario grid generation tested

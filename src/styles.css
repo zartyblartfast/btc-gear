@@ -156,6 +156,108 @@ h1, h2 {
   color: #cbd5e1 !important;
 }
 
+.tradeoff-map-section {
+  border: 1px solid #334155;
+  border-radius: 16px;
+  background: #0f172a;
+  margin-top: 28px;
+  padding: 18px;
+}
+
+.tradeoff-map-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.tradeoff-map-header h3 {
+  color: #f8fafc;
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.tradeoff-map-header p {
+  margin: 0;
+}
+
+.tradeoff-marker-legend,
+.tradeoff-status-legend,
+.tradeoff-quadrants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tradeoff-marker-legend {
+  justify-content: end;
+}
+
+.tradeoff-quadrants,
+.tradeoff-status-legend {
+  margin-top: 14px;
+}
+
+.tradeoff-quadrants span,
+.tradeoff-pill,
+.status-pill {
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #111827;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
+.tradeoff-pill--current {
+  border-color: #f8fafc;
+}
+
+.tradeoff-pill--recommended {
+  border-color: #fde68a;
+  color: #fde68a;
+}
+
+.tradeoff-pill--muted {
+  color: #94a3b8;
+}
+
+.status-pill--green {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.status-pill--warning {
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.status-pill--constrained {
+  border-color: #f97316;
+  color: #fdba74;
+}
+
+.status-pill--liquidated {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.tradeoff-tooltip {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #020617;
+  color: #e5eefb;
+  display: grid;
+  gap: 3px;
+  max-width: 320px;
+  padding: 10px 12px;
+}
+
+.tradeoff-tooltip span {
+  font-size: 0.78rem;
+}
+
 @media (max-width: 760px) {
   .app-header {
     align-items: start;

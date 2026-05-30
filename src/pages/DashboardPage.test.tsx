@@ -66,4 +66,17 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('heading', { name: 'Income drawn vs skipped' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Net BTC after debt' })).toBeInTheDocument();
   });
+
+  it('renders the Strategy Tradeoff Map section with markers and legend labels', () => {
+    render(<DashboardPage config={config} />);
+
+    expect(screen.getByRole('region', { name: 'Strategy Tradeoff Map' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Strategy Tradeoff Map' })).toBeInTheDocument();
+    expect(screen.getByText('Current scenario')).toBeInTheDocument();
+    expect(screen.getByText('Recommended')).toBeInTheDocument();
+    expect(screen.getByText('Best Tradeoff')).toBeInTheDocument();
+    expect(screen.getByText('High Income / High Risk')).toBeInTheDocument();
+    expect(screen.getByText('Conservative')).toBeInTheDocument();
+    expect(screen.getByText('Weak Tradeoff')).toBeInTheDocument();
+  });
 });
