@@ -1,5 +1,7 @@
 import type { BtcGearConfig, NormalizedBtcGearConfig, ProjectionStatus } from './types';
 
+const COMPARISON_EPSILON = 1e-9;
+
 type RiskInput = {
   config: NormalizedBtcGearConfig;
   debtUsd: number;
@@ -100,15 +102,15 @@ export function calculateRiskMetrics({ config, debtUsd, btcPriceUsd }: RiskInput
     status = 'liquidated';
     reasonCodes.push('liquidation_threshold_breached');
   } else {
-    if (debtUsd > maxSafeDebtUsd) {
+    if (debtUsd > maxSafeDebtUsd + COMPARISON_EPSILON) {
       status = 'warning';
       reasonCodes.push('already_over_safe_debt');
     }
-    if (debtUsd > maxDebtByIncomeLtv) {
+    if (debtUsd > maxDebtByIncomeLtv + COMPARISON_EPSILON) {
       status = 'warning';
       reasonCodes.push('above_income_ltv_ceiling');
     }
-    if (dropToLiquidation < config.loan.requiredDropBuffer) {
+    if (dropToLiquidation < config.loan.requiredDropBuffer - COMPARISON_EPSILON) {
       status = 'warning';
       reasonCodes.push('below_required_drop_buffer');
     }
