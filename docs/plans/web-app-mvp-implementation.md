@@ -10,24 +10,24 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30, after Stage 2.2
+Last updated: 2026-05-30, after Stage 2.3 and review/rebaseline fixture coverage
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit in this checkout: `dde971e feat: add saved scenario store`
+- Latest verified implementation commit in this checkout: `639e9cd test: add review rebaseline fixture coverage`
 - Local branch state at time of update: ahead of `origin/main` by local progress commits that may still need pushing
 - Local tracked changes at time of update: this plan file only
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run` -> 12 test files passed, 78 tests passed
+- `npm test -- --run` -> 14 test files passed, 88 tests passed
 - `npm run build` -> passed
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
-- [ ] Stage 2: Local-first data is in progress. Stage 2.1 and 2.2 are complete; continue with review/baseline operations.
+- [ ] Stage 2: Local-first data is in progress. Stage 2.1, 2.2, and 2.3 are complete; continue with export/import.
 - [ ] Stage 3: Dashboard UI waits for Stage 2 foundation and chart data helpers.
 - [ ] Stage 4: Strategy / Inputs UI waits for store-backed config editing.
 - [ ] Stage 5: What If UI waits for scenario store.
@@ -35,9 +35,9 @@ Progress summary:
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 2.3: implement review store and baseline operations with tests.
+1. Start Stage 2.4: implement export/import profile with tests.
 2. Keep storage access behind the existing `KeyValueStorage` adapter from `src/store/storage.ts`.
-3. After Stage 2.3 creates real review/rebaseline operations, add the deferred Review/Rebaseline golden or integration fixture from `docs/web-app/test-strategy.md`.
+3. Keep the export schema aligned with `docs/web-app/review-local-first-and-dashboard-spec.md`.
 
 Resume command checklist:
 ```bash
@@ -175,7 +175,7 @@ Acceptance:
 
 ## [ ] Stage 2: Local-first data
 
-Progress note: Stage 2 is in progress. Stage 2.1 added storage adapters and profile config persistence with tests. Stage 2.2 added saved scenario persistence. The next priority is review/baseline operations. Review/rebaseline fixture coverage remains deferred until real review operations exist.
+Progress note: Stage 2 is in progress. Stage 2.1 added storage adapters and profile config persistence with tests. Stage 2.2 added saved scenario persistence. Stage 2.3 added review/baseline operations and the previously deferred review/rebaseline fixture coverage. The next priority is export/import.
 
 
 ### [x] Task 2.1: Implement profile store abstraction
@@ -198,7 +198,9 @@ Progress note: Complete in `dde971e feat: add saved scenario store`. Added `src/
 Acceptance:
 - save, rename, delete, load scenario tests pass
 
-### [ ] Task 2.3: Implement review store and baseline operations
+### [x] Task 2.3: Implement review store and baseline operations
+
+Progress note: Complete in `d140200 feat: add review baseline store`, with fixture coverage in `639e9cd test: add review rebaseline fixture coverage`. Added `src/store/reviewStore.ts`, review add/delete/latest operations, baseline lock/clear/rebaseline operations, strategy fingerprint change detection, schema fallback behavior, defensive copies, and review/rebaseline integration coverage.
 
 Acceptance:
 - add/delete review
@@ -314,7 +316,9 @@ Acceptance:
 - liquidation status has precedence
 - post-liquidation rows draw zero
 
-### [ ] Task 0.5: Add baseline/review schema tests before Review UI
+### [x] Task 0.5: Add baseline/review schema tests before Review UI
+
+Progress note: Complete through Stage 2.2/2.3 store tests. `SavedScenario`, `ReviewSnapshot`, and `BaselineSnapshot` storage shapes are validated; strategy fingerprint changes are detected; latest review wins for revised projection/rebaseline.
 
 Acceptance:
 - `BaselineSnapshot`, `ReviewSnapshot`, and `SavedScenario` schemas are validated
