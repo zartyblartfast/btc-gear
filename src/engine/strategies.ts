@@ -1,3 +1,4 @@
+import { calculateSupplementalGuardrailDecision } from './strategySupplementalGuardrail';
 import type { NormalizedBtcGearConfig, ProjectionStatus, StrategyConfig } from './types';
 
 export type StrategyDecision = {
@@ -21,10 +22,11 @@ export function calculateStrategyDecision({
     case 'fixedDraw':
       return calculateFixedDrawDecision(strategy.annualDrawUsd, availableSafeDrawUsd);
     case 'supplementalGuardrail':
+      return calculateSupplementalGuardrailDecision(strategy, availableSafeDrawUsd);
     case 'arva':
     case 'arvaGuardrails':
     case 'maxSafeCapacity':
-      throw new Error(`${strategy.kind} strategy is not implemented in the fixed-draw lifecycle slice`);
+      throw new Error(`${strategy.kind} strategy is not implemented in the current engine slice`);
   }
 }
 
