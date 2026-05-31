@@ -10,20 +10,21 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-31, after Stage 5 What If UI
+Last updated: 2026-05-31, after Stage 6 Review UI
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit before this update: `9871122 feat: add strategy inputs editor`
-- Latest verified implementation commit after this update: `1a5fa6b feat: add what-if scenario sandbox`
-- Local branch state at time of update: ahead of `origin/main` by Stage 5 commit
+- Latest verified implementation commit before this update: `e97e134 feat: add what-if scenario sandbox`
+- Latest verified implementation commit after this update: `1ff0988 feat: add review control loop UI`
+- Local branch state at time of update: ahead of `origin/main` by Stage 6 commit
 - Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run src/whatif/__tests__/heatmap.test.ts src/pages/WhatIfPage.test.tsx src/App.test.tsx` -> 3 test files passed, 17 tests passed
-- `npm test -- --run` -> 22 test files passed, 125 tests passed
+- Stage 6 RED check: `npm test -- --run src/review/__tests__/reviewChartData.test.ts src/pages/ReviewPage.test.tsx src/App.test.tsx` failed as expected before implementation because the review helper did not exist and ReviewPage was still a placeholder.
+- Stage 6 targeted GREEN: `npm test -- --run src/review/__tests__/reviewChartData.test.ts src/pages/ReviewPage.test.tsx src/App.test.tsx` -> 3 test files passed, 18 tests passed
+- `npm test -- --run` -> 24 test files passed, 135 tests passed
 - `npm run build` -> passed with existing Vite chunk-size warning after Recharts charts
 
 Progress summary:
@@ -33,13 +34,13 @@ Progress summary:
 - [x] Stage 3: Dashboard UI is complete with summary cards, core projection charts, and Strategy Tradeoff Map.
 - [x] Stage 4: Strategy / Inputs UI is complete with store-backed config editing.
 - [x] Stage 5: What If UI is complete with isolated sandbox, scenario save/load, comparison table/chart, and heatmap helper tests.
-- [ ] Stage 6: Review UI is next; build review actuals, charts, rebaseline, and backup prompt.
-- [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
+- [x] Stage 6: Review UI is complete with actuals entry/history, revised projection, baseline/rebaseline, strategy-changed warning, and backup prompt.
+- [ ] Stage 7: Deployment and final quality gate is next.
 
 Immediate next task:
-1. Start Stage 6: Review UI.
-2. Build review actuals entry/history, revised projection from latest actuals, strategy-changed warning, rebaseline, and export backup prompt.
-3. Keep Review UI local-first and covered by tests.
+1. Start Stage 7: Deployment and quality gate.
+2. Confirm Netlify config and README local dev/build/privacy/export-import notes.
+3. Run the final full test and production build gates.
 
 Resume command checklist:
 ```bash
@@ -272,15 +273,17 @@ Acceptance:
 - scenario comparison table/chart works
 - heatmap data helper tested
 
-## [ ] Stage 6: Review UI
+## [x] Stage 6: Review UI
+
+Progress note: Complete. Added an injected `ReviewStore` Review page that saves local review actuals, renders review history and compact actual/baseline/revised chart data labels, builds revised projections from the latest actual snapshot, warns when the strategy fingerprint changed, supports baseline lock and rebaseline from latest review, and prompts for profile backup export after a review save. Added pure `src/review/reviewChartData.ts` helper coverage and App-level injected review store coverage.
 
 Acceptance:
-- user saves review actuals
-- actual history charts update
-- revised projection starts from latest actuals
-- strategy-changed warning appears
-- rebaseline works
-- export backup prompt appears after review save
+- [x] user saves review actuals
+- [x] actual history charts update
+- [x] revised projection starts from latest actuals
+- [x] strategy-changed warning appears
+- [x] rebaseline works
+- [x] export backup prompt appears after review save
 
 ## [ ] Stage 7: Deployment and quality gate
 

@@ -8,6 +8,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import type { BtcGearConfig } from './engine/types';
 import { createProfileStore, type ProfileStore } from './store/profileStore';
 import { createScenarioStore, type ScenarioStore } from './store/scenarioStore';
+import { createReviewStore, type ReviewStore } from './store/reviewStore';
 import { createBrowserStorage } from './store/storage';
 
 export type PageId = 'dashboard' | 'strategy' | 'what-if' | 'review' | 'profile';
@@ -22,12 +23,14 @@ type Page = {
 type AppProps = {
   profileStore?: ProfileStore;
   scenarioStore?: ScenarioStore;
+  reviewStore?: ReviewStore;
 };
 
-export function App({ profileStore: injectedProfileStore, scenarioStore: injectedScenarioStore }: AppProps = {}) {
+export function App({ profileStore: injectedProfileStore, scenarioStore: injectedScenarioStore, reviewStore: injectedReviewStore }: AppProps = {}) {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const profileStore = useMemo(() => injectedProfileStore ?? createProfileStore(createBrowserStorage()), [injectedProfileStore]);
   const scenarioStore = useMemo(() => injectedScenarioStore ?? createScenarioStore(createBrowserStorage()), [injectedScenarioStore]);
+  const reviewStore = useMemo(() => injectedReviewStore ?? createReviewStore(createBrowserStorage()), [injectedReviewStore]);
   const [config, setConfig] = useState<BtcGearConfig>(() => profileStore.loadConfig());
 
   function handleSaveConfig(nextConfig: BtcGearConfig) {
@@ -50,10 +53,10 @@ export function App({ profileStore: injectedProfileStore, scenarioStore: injecte
         element: <StrategyPage config={config} onSaveConfig={handleSaveConfig} onResetConfig={handleResetConfig} />,
       },
       { id: 'what-if', label: 'What If', title: 'What If', element: <WhatIfPage config={config} scenarioStore={scenarioStore} /> },
-      { id: 'review', label: 'Review', title: 'Review', element: <ReviewPage /> },
+      { id: 'review', label: 'Review', title: 'Review', element: <ReviewPage config={config} reviewStore={reviewStore} /> },
       { id: 'profile', label: 'Profile', title: 'Profile', element: <ProfilePage /> },
     ],
-    [config, profileStore, scenarioStore],
+    [config, profileStore, scenarioStore, reviewStore],
   );
 
   const currentPage = pages.find((page) => page.id === activePage) ?? pages[0];

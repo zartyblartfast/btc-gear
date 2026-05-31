@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import { PROFILE_CONFIG_KEY, createProfileStore } from './store/profileStore';
 import { createScenarioStore } from './store/scenarioStore';
+import { createReviewStore } from './store/reviewStore';
 import { createMemoryStorage } from './store/storage';
 
 describe('App navigation', () => {
@@ -83,5 +84,20 @@ describe('App navigation', () => {
     expect(scenarioStore.listScenarios()[0].config.position.debtUsd).toBe(135000);
     expect(screen.getByLabelText('Current debt')).toHaveTextContent('$50,000');
     expect(profileStore.loadConfig().position.debtUsd).toBe(50000);
+  });
+
+  it('accepts an injected review store and saves Review page actuals there', async () => {
+    const user = userEvent.setup();
+    const profileStore = createProfileStore(createMemoryStorage());
+    const reviewStore = createReviewStore(createMemoryStorage());
+    render(<App profileStore={profileStore} reviewStore={reviewStore} />);
+
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.clear(screen.getByLabelText('Debt USD'));
+    await user.type(screen.getByLabelText('Debt USD'), '61000');
+    await user.click(screen.getByRole('button', { name: 'Save review' }));
+
+    expect(reviewStore.listReviews()).toHaveLength(1);
+    expect(reviewStore.listReviews()[0].debtUsd).toBe(61000);
   });
 });
