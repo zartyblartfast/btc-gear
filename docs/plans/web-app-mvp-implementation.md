@@ -10,20 +10,20 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-30, after Stage 3.3 Strategy Tradeoff Map
+Last updated: 2026-05-31, after Stage 4 Strategy / Inputs UI
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit before this update: `6c96972 feat: add dashboard projection charts`
-- Latest verified implementation commit after this update: `df6200d feat: add strategy tradeoff map`
-- Local branch state at time of update: ahead of `origin/main` by Stage 3.3 commit
+- Latest verified implementation commit before this update: `64a38b9 feat: add strategy tradeoff map`
+- Latest verified implementation commit after this update: `5480d63 feat: add strategy inputs editor`
+- Local branch state at time of update: ahead of `origin/main` by Stage 4 commit
 - Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run src/dashboard/__tests__/tradeoffMap.test.ts src/pages/DashboardPage.test.tsx` -> 2 test files passed, 10 tests passed
-- `npm test -- --run` -> 19 test files passed, 108 tests passed
+- `npm test -- --run src/pages/StrategyPage.test.tsx src/App.test.tsx` -> 2 test files passed, 12 tests passed
+- `npm test -- --run` -> 20 test files passed, 115 tests passed
 - `npm run build` -> passed with existing Vite chunk-size warning after adding Recharts charts
 
 Progress summary:
@@ -31,15 +31,15 @@ Progress summary:
 - [x] Stage 1: Pure TypeScript engine is implemented through ARVA Guardrails and golden fixtures.
 - [x] Stage 2: Local-first data is complete.
 - [x] Stage 3: Dashboard UI is complete with summary cards, core projection charts, and Strategy Tradeoff Map.
-- [ ] Stage 4: Strategy / Inputs UI is next; implement store-backed config editing.
-- [ ] Stage 5: What If UI waits for scenario store.
+- [x] Stage 4: Strategy / Inputs UI is complete with store-backed config editing.
+- [ ] Stage 5: What If UI is next; implement scenario sandbox UI.
 - [ ] Stage 6: Review UI waits for review store and baseline operations.
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 4: Strategy / Inputs UI.
-2. Implement user-editable position, loan terms, price path, and strategy params backed by the local-first profile store.
-3. Keep strategy-specific fields conditional and persist config locally.
+1. Start Stage 5: What If UI.
+2. Build a sandbox that starts from the current config without mutating the live profile.
+3. Support scenario save/load and comparison views using the existing scenario store.
 
 Resume command checklist:
 ```bash
@@ -252,7 +252,9 @@ Acceptance:
 - current scenario marker included
 - best tradeoff scoring tested
 
-## [ ] Stage 4: Strategy / Inputs UI
+## [x] Stage 4: Strategy / Inputs UI
+
+Progress note: Complete. Added a controlled Strategy / Inputs editor for position, loan terms, projection fields, price paths, and all strategy kinds. Strategy-specific and price-path-specific fields render conditionally, save validates/parses finite numbers, reset restores the default profile through the profile store, and App-level profile config state keeps Dashboard in sync while persisting locally.
 
 Acceptance:
 - user can edit position, loan terms, price path, strategy params

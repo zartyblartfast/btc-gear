@@ -5,6 +5,9 @@ import { StrategyPage } from './pages/StrategyPage';
 import { WhatIfPage } from './pages/WhatIfPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ProfilePage } from './pages/ProfilePage';
+import type { BtcGearConfig } from './engine/types';
+import { createProfileStore, type ProfileStore } from './store/profileStore';
+import { createBrowserStorage } from './store/storage';
 
 export type PageId = 'dashboard' | 'strategy' | 'what-if' | 'review' | 'profile';
 
@@ -15,18 +18,39 @@ type Page = {
   element: ReactNode;
 };
 
-export function App() {
+type AppProps = {
+  profileStore?: ProfileStore;
+};
+
+export function App({ profileStore: injectedProfileStore }: AppProps = {}) {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
+  const profileStore = useMemo(() => injectedProfileStore ?? createProfileStore(createBrowserStorage()), [injectedProfileStore]);
+  const [config, setConfig] = useState<BtcGearConfig>(() => profileStore.loadConfig());
+
+  function handleSaveConfig(nextConfig: BtcGearConfig) {
+    profileStore.saveConfig(nextConfig);
+    setConfig(nextConfig);
+  }
+
+  function handleResetConfig() {
+    profileStore.resetConfig();
+    setConfig(profileStore.loadConfig());
+  }
 
   const pages = useMemo<Page[]>(
     () => [
-      { id: 'dashboard', label: 'Dashboard', title: 'Dashboard', element: <DashboardPage /> },
-      { id: 'strategy', label: 'Strategy', title: 'Strategy / Inputs', element: <StrategyPage /> },
+      { id: 'dashboard', label: 'Dashboard', title: 'Dashboard', element: <DashboardPage config={config} /> },
+      {
+        id: 'strategy',
+        label: 'Strategy',
+        title: 'Strategy / Inputs',
+        element: <StrategyPage config={config} onSaveConfig={handleSaveConfig} onResetConfig={handleResetConfig} />,
+      },
       { id: 'what-if', label: 'What If', title: 'What If', element: <WhatIfPage /> },
       { id: 'review', label: 'Review', title: 'Review', element: <ReviewPage /> },
       { id: 'profile', label: 'Profile', title: 'Profile', element: <ProfilePage /> },
     ],
-    [],
+    [config, profileStore],
   );
 
   const currentPage = pages.find((page) => page.id === activePage) ?? pages[0];
