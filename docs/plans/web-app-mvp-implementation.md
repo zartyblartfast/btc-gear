@@ -10,21 +10,21 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-31, after Stage 4 Strategy / Inputs UI
+Last updated: 2026-05-31, after Stage 5 What If UI
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit before this update: `64a38b9 feat: add strategy tradeoff map`
-- Latest verified implementation commit after this update: `5480d63 feat: add strategy inputs editor`
-- Local branch state at time of update: ahead of `origin/main` by Stage 4 commit
+- Latest verified implementation commit before this update: `9871122 feat: add strategy inputs editor`
+- Latest verified implementation commit after this update: `1a5fa6b feat: add what-if scenario sandbox`
+- Local branch state at time of update: ahead of `origin/main` by Stage 5 commit
 - Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- `npm test -- --run src/pages/StrategyPage.test.tsx src/App.test.tsx` -> 2 test files passed, 12 tests passed
-- `npm test -- --run` -> 20 test files passed, 115 tests passed
-- `npm run build` -> passed with existing Vite chunk-size warning after adding Recharts charts
+- `npm test -- --run src/whatif/__tests__/heatmap.test.ts src/pages/WhatIfPage.test.tsx src/App.test.tsx` -> 3 test files passed, 17 tests passed
+- `npm test -- --run` -> 22 test files passed, 125 tests passed
+- `npm run build` -> passed with existing Vite chunk-size warning after Recharts charts
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
@@ -32,14 +32,14 @@ Progress summary:
 - [x] Stage 2: Local-first data is complete.
 - [x] Stage 3: Dashboard UI is complete with summary cards, core projection charts, and Strategy Tradeoff Map.
 - [x] Stage 4: Strategy / Inputs UI is complete with store-backed config editing.
-- [ ] Stage 5: What If UI is next; implement scenario sandbox UI.
-- [ ] Stage 6: Review UI waits for review store and baseline operations.
+- [x] Stage 5: What If UI is complete with isolated sandbox, scenario save/load, comparison table/chart, and heatmap helper tests.
+- [ ] Stage 6: Review UI is next; build review actuals, charts, rebaseline, and backup prompt.
 - [ ] Stage 7: Deployment and final quality gate waits for MVP feature completion.
 
 Immediate next task:
-1. Start Stage 5: What If UI.
-2. Build a sandbox that starts from the current config without mutating the live profile.
-3. Support scenario save/load and comparison views using the existing scenario store.
+1. Start Stage 6: Review UI.
+2. Build review actuals entry/history, revised projection from latest actuals, strategy-changed warning, rebaseline, and export backup prompt.
+3. Keep Review UI local-first and covered by tests.
 
 Resume command checklist:
 ```bash
@@ -261,7 +261,9 @@ Acceptance:
 - strategy-specific fields appear only for selected strategy
 - app persists config locally
 
-## [ ] Stage 5: What If UI
+## [x] Stage 5: What If UI
+
+Progress note: Complete. Added an injected-store What If sandbox that initializes from the live profile, keeps edits local to sandbox state, saves and loads scenarios through `ScenarioStore`, compares live/sandbox/saved scenarios in a table and Recharts bar chart, and renders a projection-backed stress heatmap. Added pure `src/whatif/heatmap.ts` helper coverage for grid generation, no base-config mutation, and worsening outcomes under higher draw stress.
 
 Acceptance:
 - sandbox starts from current config

@@ -7,6 +7,7 @@ import { ReviewPage } from './pages/ReviewPage';
 import { ProfilePage } from './pages/ProfilePage';
 import type { BtcGearConfig } from './engine/types';
 import { createProfileStore, type ProfileStore } from './store/profileStore';
+import { createScenarioStore, type ScenarioStore } from './store/scenarioStore';
 import { createBrowserStorage } from './store/storage';
 
 export type PageId = 'dashboard' | 'strategy' | 'what-if' | 'review' | 'profile';
@@ -20,11 +21,13 @@ type Page = {
 
 type AppProps = {
   profileStore?: ProfileStore;
+  scenarioStore?: ScenarioStore;
 };
 
-export function App({ profileStore: injectedProfileStore }: AppProps = {}) {
+export function App({ profileStore: injectedProfileStore, scenarioStore: injectedScenarioStore }: AppProps = {}) {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const profileStore = useMemo(() => injectedProfileStore ?? createProfileStore(createBrowserStorage()), [injectedProfileStore]);
+  const scenarioStore = useMemo(() => injectedScenarioStore ?? createScenarioStore(createBrowserStorage()), [injectedScenarioStore]);
   const [config, setConfig] = useState<BtcGearConfig>(() => profileStore.loadConfig());
 
   function handleSaveConfig(nextConfig: BtcGearConfig) {
@@ -46,11 +49,11 @@ export function App({ profileStore: injectedProfileStore }: AppProps = {}) {
         title: 'Strategy / Inputs',
         element: <StrategyPage config={config} onSaveConfig={handleSaveConfig} onResetConfig={handleResetConfig} />,
       },
-      { id: 'what-if', label: 'What If', title: 'What If', element: <WhatIfPage /> },
+      { id: 'what-if', label: 'What If', title: 'What If', element: <WhatIfPage config={config} scenarioStore={scenarioStore} /> },
       { id: 'review', label: 'Review', title: 'Review', element: <ReviewPage /> },
       { id: 'profile', label: 'Profile', title: 'Profile', element: <ProfilePage /> },
     ],
-    [config, profileStore],
+    [config, profileStore, scenarioStore],
   );
 
   const currentPage = pages.find((page) => page.id === activePage) ?? pages[0];

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import { PROFILE_CONFIG_KEY, createProfileStore } from './store/profileStore';
+import { createScenarioStore } from './store/scenarioStore';
 import { createMemoryStorage } from './store/storage';
 
 describe('App navigation', () => {
@@ -62,5 +63,25 @@ describe('App navigation', () => {
 
     expect(screen.getByLabelText('Current debt')).toHaveTextContent('$125,000');
     expect(store.loadConfig().position.debtUsd).toBe(125000);
+  });
+
+  it('uses injected scenario store while What If sandbox edits leave Dashboard live config unchanged', async () => {
+    const user = userEvent.setup();
+    const profileStore = createProfileStore(createMemoryStorage());
+    const scenarioStore = createScenarioStore(createMemoryStorage());
+    render(<App profileStore={profileStore} scenarioStore={scenarioStore} />);
+
+    await user.click(screen.getByRole('button', { name: 'What If' }));
+    await user.clear(screen.getByLabelText('Sandbox debt USD'));
+    await user.type(screen.getByLabelText('Sandbox debt USD'), '135000');
+    await user.clear(screen.getByLabelText('Scenario name'));
+    await user.type(screen.getByLabelText('Scenario name'), 'App sandbox');
+    await user.click(screen.getByRole('button', { name: 'Save scenario' }));
+    await user.click(screen.getByRole('button', { name: 'Dashboard' }));
+
+    expect(scenarioStore.listScenarios()).toHaveLength(1);
+    expect(scenarioStore.listScenarios()[0].config.position.debtUsd).toBe(135000);
+    expect(screen.getByLabelText('Current debt')).toHaveTextContent('$50,000');
+    expect(profileStore.loadConfig().position.debtUsd).toBe(50000);
   });
 });
