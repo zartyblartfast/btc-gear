@@ -1,10 +1,10 @@
 # BTC Gear
 
-Bitcoin leveraged accumulation and retirement income projector. Borrow against BTC to acquire more — see how different LTV strategies play out over 20-year price scenarios. All calculations run in your browser. No accounts, no servers.
+Bitcoin leveraged accumulation and retirement income projector. Borrow against BTC, model income strategies, review actual BTC/debt outcomes, and compare what-if scenarios over forward price paths. The MVP is local-first: calculations and profile data stay in your browser unless you export and move them yourself.
 
 ## Status
 
-🚧 **Pre-alpha** — specification and planning phase.
+MVP web app implemented through Dashboard, Strategy / Inputs, What If, Review, and local-first profile data foundations.
 
 ## Documentation
 
@@ -15,44 +15,77 @@ Bitcoin leveraged accumulation and retirement income projector. Borrow against B
 - [Web App MVP Implementation Plan](docs/plans/web-app-mvp-implementation.md) — staged AI-coding plan
 - [Spreadsheet v2 Model Spec](docs/spreadsheet-v2-model-specification.md) — formula-native workbook/reference model
 
-## Architecture
+## Web app architecture
 
-> **Note:** The source tree shown below is planned. Implementation has not started yet.
+```text
+src/
+├── dashboard/       # Dashboard summary, chart, and tradeoff-map data helpers
+├── engine/          # Pure strategy/risk/projection engine and golden fixtures
+├── pages/           # React pages: Dashboard, Strategy, What If, Review, Profile
+├── review/          # Review/rebaseline chart-data helpers
+├── store/           # Local-first storage, profile, scenario, review, export helpers
+└── whatif/          # What-if heatmap helpers
+```
 
-```
-btc-gear/
-├── docs/                  # Specifications and documentation
-├── src/
-│   ├── engine/            # Pure calculation functions (no React)
-│   │   ├── __tests__/     # Golden tests
-│   │   │   └── fixtures/  # Test input/output pairs
-│   │   ├── prices.ts
-│   │   ├── position.ts
-│   │   ├── income.ts
-│   │   ├── summary.ts
-│   │   ├── sensitivity.ts
-│   │   └── types.ts
-│   ├── components/        # React UI
-│   │   ├── ConfigPanel/
-│   │   ├── Charts/
-│   │   └── Summary/
-│   ├── hooks/
-│   └── state/
-└── public/
-```
+All strategy calculations live in pure TypeScript helpers under `src/engine`. React pages use injected/default local-first stores; components should not call `localStorage` directly.
 
 ## Stack
 
-React 18+ (Vite) · TypeScript (strict) · Recharts · Tailwind CSS · Vitest · Netlify
+Vite · React · TypeScript strict · Recharts · Vitest · React Testing Library · Netlify
 
-## Local Development
+## Local development
 
 ```bash
 npm install
-npm run dev      # Vite dev server
-npm test         # Vitest (when tests exist)
-npm run build    # Production build
+npm run dev          # Vite dev server, usually http://localhost:5173
+npm test -- --run    # one-shot Vitest suite
+npm run build        # TypeScript check + production build
+npm run preview      # serve the production build locally
 ```
+
+If running the dev server on a VPS, keep it private and tunnel from your laptop:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 5173
+ssh -L 5173:127.0.0.1:5173 <user>@<vps-host>
+```
+
+Then open `http://localhost:5173` on the laptop.
+
+## Build and deploy
+
+Production build output goes to `dist/`.
+
+```bash
+npm run build
+npm run preview
+```
+
+Netlify is configured by `netlify.toml`:
+
+- build command: `npm run build`
+- publish directory: `dist`
+- SPA fallback: `/* -> /index.html`
+
+For GitHub-connected Netlify deploys, set the build command and publish directory from `netlify.toml` or let Netlify detect them.
+
+## Privacy and local-first data
+
+btc-gear stores your holdings, debt, scenarios, reviews, and baseline data in this browser. They are not uploaded to a server by the app. Clearing browser/site data can delete your profile.
+
+Use profile export/import to back up or move devices. Review saves also prompt you to export a backup so real-world review history is not stranded in one browser profile.
+
+## Profile export/import
+
+The profile export bundle is schema-versioned JSON containing:
+
+- current config
+- saved what-if scenarios
+- review snapshots
+- locked baseline, when present
+- optional preferences
+
+Imports validate the app marker, schema version, and required fields before accepting profile data. Keep exported files private: they contain financial position and debt information.
 
 ## Build the spreadsheet
 

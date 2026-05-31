@@ -10,22 +10,20 @@ Tech stack: Vite, React, TypeScript strict, Tailwind, Recharts, Vitest, React Te
 
 ## Current status and handoff notes
 
-Last updated: 2026-05-31, after Stage 6 Review UI
+Last updated: 2026-05-31, after Stage 7 deployment and final quality gate
 
 Current branch state checked by Hermes:
 - Branch: `main`
 - Remote: `origin/main`
-- Latest verified implementation commit before this update: `e97e134 feat: add what-if scenario sandbox`
-- Latest verified implementation commit after this update: `1ff0988 feat: add review control loop UI`
-- Local branch state at time of update: ahead of `origin/main` by Stage 6 commit
+- Latest verified implementation commit before this update: `3e1835f feat: add review control loop UI`
+- Latest verified implementation commit after this update: Stage 7 docs/deployment handoff commit (see `git log -1` for the immutable commit hash)
+- Local branch state at time of update: ahead of `origin/main` by Stage 7 commit
 - Local tracked changes at time of update: none after commit
 - Ignored/noise directories may appear untracked: `model_v2/__pycache__/`, `scripts/__pycache__/`, `tests/__pycache__/`, `tmp/`
 
 Verified quality gate before this update:
-- Stage 6 RED check: `npm test -- --run src/review/__tests__/reviewChartData.test.ts src/pages/ReviewPage.test.tsx src/App.test.tsx` failed as expected before implementation because the review helper did not exist and ReviewPage was still a placeholder.
-- Stage 6 targeted GREEN: `npm test -- --run src/review/__tests__/reviewChartData.test.ts src/pages/ReviewPage.test.tsx src/App.test.tsx` -> 3 test files passed, 18 tests passed
 - `npm test -- --run` -> 24 test files passed, 135 tests passed
-- `npm run build` -> passed with existing Vite chunk-size warning after Recharts charts
+- `npm run build` -> passed; TypeScript build passed and Vite produced `dist/` with the existing Recharts chunk-size warning
 
 Progress summary:
 - [x] Stage 0: App skeleton and page placeholders are implemented.
@@ -35,12 +33,12 @@ Progress summary:
 - [x] Stage 4: Strategy / Inputs UI is complete with store-backed config editing.
 - [x] Stage 5: What If UI is complete with isolated sandbox, scenario save/load, comparison table/chart, and heatmap helper tests.
 - [x] Stage 6: Review UI is complete with actuals entry/history, revised projection, baseline/rebaseline, strategy-changed warning, and backup prompt.
-- [ ] Stage 7: Deployment and final quality gate is next.
+- [x] Stage 7: Deployment and final quality gate is complete.
 
 Immediate next task:
-1. Start Stage 7: Deployment and quality gate.
-2. Confirm Netlify config and README local dev/build/privacy/export-import notes.
-3. Run the final full test and production build gates.
+1. Push the Stage 7 commit.
+2. If using Netlify, connect the GitHub repo and use the checked-in `netlify.toml` build settings.
+3. Do a final browser smoke review on the deployed or local preview build.
 
 Resume command checklist:
 ```bash
@@ -285,14 +283,16 @@ Acceptance:
 - [x] rebaseline works
 - [x] export backup prompt appears after review save
 
-## [ ] Stage 7: Deployment and quality gate
+## [x] Stage 7: Deployment and quality gate
+
+Progress note: Complete. Netlify config was already present with `npm run build`, `dist`, and SPA fallback settings. README now documents local development, VPS tunneling, production build/preview, Netlify deployment, local-first privacy, and profile export/import backup expectations. Final full test and production build gates pass.
 
 Acceptance:
-- `npm test -- --run` passes
-- `npm run build` passes
-- no TypeScript errors
-- Netlify config present
-- README updated with local dev, build, privacy, export/import notes
+- [x] `npm test -- --run` passes
+- [x] `npm run build` passes
+- [x] no TypeScript errors
+- [x] Netlify config present
+- [x] README updated with local dev, build, privacy, export/import notes
 
 ## Commit discipline
 
